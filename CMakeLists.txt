@@ -5,8 +5,6 @@ set(MODE "release")
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-g")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-project(main LANGUAGES CXX)
-
 
 set(SEASTAR_PROJECT_DIR "/home/vboxuser/Projects/seastar")
 
@@ -27,36 +25,29 @@ String(REPLACE " " ";" SEASTAR_LIBS_PRIVATE_LIST "${SEASTAR_LIBS_PRIVATE}")
 message("Seastar LDFLAGS: ${SEASTAR_LDFLAGS}")
 message("Seastar Libs.private: ${SEASTAR_LIBS_PRIVATE_LIST}")
 
-#set (Seastar_SCHEDULING_GROUPS_COUNT
-#  "16"
-#  CACHE
-#  STRING
-#  "A positive number to set Seastar's reactor number of allowed different scheduling groups.")
+add_executable(seastear_simple_db src/seastear_simple_db.cc)
+target_include_directories(seastear_simple_db PRIVATE ${SEASTAR_INCLUDE_DIR})
+target_compile_options(seastear_simple_db PRIVATE ${SEASTAR_CFLAGS})
+target_link_libraries(seastear_simple_db ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
-add_executable(main src/main.cc)
-#find_library(FMT_LIB fmt PATHS /lib/x86_64-linux-gnu/)
-#target_compile_definitions (main
-#  PUBLIC SEASTAR_SCHEDULING_GROUPS_COUNT=${Seastar_SCHEDULING_GROUPS_COUNT})
-target_include_directories(main PRIVATE ${SEASTAR_INCLUDE_DIR})
-target_compile_options(main PRIVATE ${SEASTAR_CFLAGS})
-target_link_libraries(main ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
-#target_compile_features(main PRIVATE cxx_std_23)
+add_executable(seastear_simple_db_client_tester tests/seastear_simple_db_client_tester.cc)
+target_include_directories(seastear_simple_db_client_tester PRIVATE ${SEASTAR_INCLUDE_DIR})
+target_compile_options(seastear_simple_db_client_tester PRIVATE ${SEASTAR_CFLAGS})
+target_link_libraries(seastear_simple_db_client_tester ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
-add_executable(tests tests/tests.cc)
-
+add_executable(seastear_simple_db_tests tests/seastear_simple_db_tests.cc)
 find_package(GTest REQUIRED)
-target_include_directories(tests PRIVATE ${SEASTAR_INCLUDE_DIR})
-target_compile_options(tests PRIVATE ${SEASTAR_CFLAGS})
-target_link_libraries(tests GTest::GTest GTest::Main ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
-#target_compile_features(tests PRIVATE cxx_std_23)
+target_include_directories(seastear_simple_db_tests PRIVATE ${SEASTAR_INCLUDE_DIR})
+target_compile_options(seastear_simple_db_tests PRIVATE ${SEASTAR_CFLAGS})
+target_link_libraries(seastear_simple_db_tests GTest::GTest GTest::Main ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
 enable_testing()
-add_test(NAME tests COMMAND tests)
+add_test(NAME seastear_simple_db_tests COMMAND seastear_simple_db_tests)
 
 #add_custom_target(build_seastar
 #    COMMAND cd ${SEASTAR_PROJECT_DIR} && ./configure.py --mode=${MODE} --disable-dpdk --disable-hwloc --cflags=${CMAKE_CXX_FLAGS} --compiler=${CMAKE_CXX_COMPILER}
 #    COMMAND ninja -C ${SEASTAR_DIR}/build/${MODE} libseastar.a
 #)
 #
-#add_dependencies(main build_seastar)
-#add_dependencies(tests build_seastar)
+#add_dependencies(seastear_simple_db build_seastar)
+#add_dependencies(seastear_simple_db_tests build_seastar)
