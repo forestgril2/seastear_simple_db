@@ -86,29 +86,22 @@ private:
 int main(int ac, char** av) {
     app_template app;
 
-    return app.run(ac, av, [&] {
-        auto host = std::string("localhost");
-        auto path = std::string("/");
-        auto method = std::string("GET");
-        uint16_t port = 10000;
+    auto host = std::string("localhost");
+    auto path = std::string("/");
+    auto method = std::string("GET");
+    uint16_t port = 10000;
 
-        return seastar::async([=] {
-            ClientTester client(host, port);
-
-            // Connect to the server
-            client.connect().get();
-
-            // Make the HTTP request
-            client.make_request(method, path).get();
-
-            // Close the client connection
-            client.close().get();
-        }).handle_exception([](std::exception_ptr ep) {
+    return app.run(ac, av, [&] -> future<> {
+        return seastar::do_with(ClientTester(host, port), [=](ClientTester& client) -> future<> {
             try {
-                std::rethrow_exception(ep);
+                co_await client.connect();
+                co_await client.make_request(method, path);
+                co_await client.close();
+
             } catch (const std::exception& e) {
-                fmt::print("Error: {}\n", e.what());
+                    fmt::print("Error: {}\n", e.what());
             }
+            co_return;
         });
     });
 }
