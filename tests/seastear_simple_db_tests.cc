@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
-#include <sys/stat.h>
+#include <iostream>
+
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <signal.h>
-#include <iostream>
+#include <unistd.h>   // For setsid()
+
 
 //#include <algorithm>
 //#include <seastar/core/app-template.hh>
@@ -27,7 +29,6 @@ bool is_executable(const std::string& file) {
     return (stat(file.c_str(), &buffer) == 0) && (buffer.st_mode & S_IXUSR);
 }
 
-// Function to start a process and execute the binary
 pid_t execute_binary(const std::string& binaryPath) {
     pid_t pid = fork();
 
@@ -36,30 +37,40 @@ pid_t execute_binary(const std::string& binaryPath) {
         perror("fork");
         exit(EXIT_FAILURE);
     } else if (pid == 0) {
-        // Child process
-        execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
+ // Child process
+        execl(binaryPath.c_str(), binaryPath.c_str(), "--no-daemon", nullptr);
         // If execl fails, exit with error
         perror("execl");
         exit(EXIT_FAILURE);
-    }
-    
+    } 
     // Parent process
     return pid;
 }
 
 bool kill_binary(pid_t pid) {
     if (pid > 0) {
-        // Send kill signal to the child process
-        kill(pid, SIGKILL);
+        // Send SIGKILL to the specific process
+        if (kill(pid, SIGKILL) == -1) {
+            perror("kill");
+            return false;
+        }
         int status;
-        waitpid(pid, &status, 0);  // Wait for the process to terminate
+        // Wait for the specific child process to terminate
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            return false;
+        }
         if (WIFSIGNALED(status)) {
             std::cout << "Process terminated by signal: " << WTERMSIG(status) << std::endl;
             return true;
+        } else {
+            std::cout << "Process did not terminate as expected." << std::endl;
+            return false;
         }
     }
     return false;
 }
+
 
 bool is_process_alive(pid_t pid) {
     if (kill(pid, 0) == 0) {
@@ -91,11 +102,16 @@ TEST(SeastearSimpleDbTests, ServerCanBeExecuted) {
    ASSERT_EQ(killed, true);
 }
 
-TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeBeingKilled) {
+TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeTestExits) {
    const auto pid = execute_binary(k_ssdb_file_name);
    ASSERT_NE(pid, -1);
    sleep(5);
    ASSERT_TRUE(is_process_alive(pid)) << "Server binary is not alive";
-   //const auto killed = kill_binary(pid);
-   //ASSERT_EQ(killed, true);
 }
+
+//TEST(SeastearSimpleDbTests, ServerAcceptsAndRespondsToAGetRequest) {
+//   const auto pid = execute_binary(k_ssdb_file_name);
+//   ASSERT_NE(pid, -1);
+//   sleep(5);
+//   ASSERT_TRUE(is_process_alive(pid)) << "Server binary is not alive";
+//}

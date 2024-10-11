@@ -25,7 +25,38 @@ String(REPLACE " " ";" SEASTAR_LIBS_PRIVATE_LIST "${SEASTAR_LIBS_PRIVATE}")
 message("Seastar LDFLAGS: ${SEASTAR_LDFLAGS}")
 message("Seastar Libs.private: ${SEASTAR_LIBS_PRIVATE_LIST}")
 
-add_executable(seastear_simple_db src/seastear_simple_db.cc)
+function (seastar_generate_swagger)
+  set (one_value_args TARGET VAR IN_FILE OUT_DIR)
+  cmake_parse_arguments (args "" "${one_value_args}" "" ${ARGN})
+  get_filename_component (in_file_name ${args_IN_FILE} NAME)
+  set (generator ${SEASTAR_PROJECT_DIR}/scripts/seastar-json2code.py)
+  set (header_out ${args_OUT_DIR}/${in_file_name}.hh)
+  set (source_out ${args_OUT_DIR}/${in_file_name}.cc)
+
+  add_custom_command (
+    DEPENDS
+      ${args_IN_FILE}
+      ${generator}
+    OUTPUT ${header_out} ${source_out}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${args_OUT_DIR}
+    COMMAND ${generator} --create-cc -f ${args_IN_FILE} -o ${header_out})
+
+  add_custom_target (${args_TARGET}
+    DEPENDS
+      ${header_out}
+      ${source_out})
+
+  set (${args_VAR} ${header_out} ${source_out} PARENT_SCOPE)
+endfunction ()
+
+seastar_generate_swagger (
+  TARGET app_httpd_swagger
+  VAR app_httpd_swagger_files
+  IN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/demo.json
+  OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_executable(seastear_simple_db src/seastear_simple_db.cc ${app_httpd_swagger_files})
+#add_dependencies (seastar_simple_db app_httpd_swagger)
 target_include_directories(seastear_simple_db PRIVATE ${SEASTAR_INCLUDE_DIR})
 target_compile_options(seastear_simple_db PRIVATE ${SEASTAR_CFLAGS})
 target_link_libraries(seastear_simple_db ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
