@@ -2,22 +2,22 @@
 
 #include <iostream>
 
-#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
-#include <unistd.h>   // For setsid()
 
+#include <seastar/core/app-template.hh>
+#include <seastar/core/reactor.hh>
+#include <seastar/core/shared_ptr.hh>
+#include <seastar/core/iostream.hh>
+#include <seastar/core/fstream.hh>
+#include <seastar/core/thread.hh>
+#include <seastar/http/client.hh>
+#include <seastar/http/request.hh>
+#include <seastar/http/reply.hh>
+#include <seastar/net/inet_address.hh>
+#include <seastar/net/dns.hh>
+#include <seastar/net/tls.hh>
 
-//#include <algorithm>
-//#include <seastar/core/app-template.hh>
-//#include <seastar/core/file.hh>
-//#include <seastar/core/reactor.hh>
-//#include <seastar/core/seastar.hh>
-//#include <seastar/core/semaphore.hh>
-//#include <iostream>
-
-//using namespace seastar;
 
 const std::string k_ssdb_file_name = "seastear_simple_db";
 const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
@@ -110,6 +110,59 @@ TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeTestExits) {
    ASSERT_EQ(killed, true);
 }
 
+
+using namespace seastar;
+namespace bpo = boost::program_options;
+
+struct printer {
+    future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
+        if (buf.empty()) {
+            return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
+        }
+        fmt::print("{}\n", sstring(buf.get(), buf.size()));
+        return make_ready_future<consumption_result<char>>(continue_consuming());
+    }
+};
+
+class ClientTester {
+public:
+    ClientTester(const std::string& host, uint16_t port)
+        : _host(host), _port(port) {}
+
+    future<> connect() {
+        return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
+            auto addr = e.addr_list.front();
+            socket_address address(addr, _port);
+            _client = std::make_unique<http::experimental::client>(address);
+            return make_ready_future<>();
+        });
+    }
+
+    future<> make_request(const std::string& method, const std::string& path) {
+        auto req = http::request::make(method, _host, path);
+        return _client->make_request(std::move(req), [this](const http::reply& rep, input_stream<char>&& in) {
+            fmt::print("Reply status: {}\n", rep._status);
+            return in.consume(printer{}).then([in = std::move(in)]() mutable {
+                return in.close();
+            });
+        });
+    }
+
+    future<> close() {
+        if (_client) {
+            return _client->close();
+        } else {
+            return make_ready_future<>();
+        }
+    }
+
+private:
+    std::string _host;
+    uint16_t _port;
+    std::unique_ptr<http::experimental::client> _client;
+};
+
+
 class SeastearSimpleDbTestFixture : public ::testing::Test {
 protected:
     pid_t server_pid;
@@ -127,5 +180,35 @@ protected:
 };
 
 TEST_F(SeastearSimpleDbTestFixture, ServerAcceptsAndRespondsToAGetRequest) {
-    ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive during test execution.";
+   ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive";
+//    seastar::future<> test_future = seastar::async([] {
+//        ClientTester client("localhost", 10000);
+//        client.connect().get();
+//        client.make_request("GET", "/").get();
+//        client.close().get();
+//    }).handle_exception([](std::exception_ptr ep) {
+//        try {
+//            std::rethrow_exception(ep);
+//        } catch (const std::exception& e) {
+//            FAIL() << "Exception occurred: " << e.what();
+//        }
+//    });
+//
+//    test_future.get();
+};
+
+int main(int argc, char** argv) {
+    // Initialize Google Test
+    ::testing::InitGoogleTest(&argc, argv);
+
+    // Create Seastar app_template
+    seastar::app_template app;
+
+    // Run Seastar application
+    return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
+        // Run all the tests
+        int test_result = RUN_ALL_TESTS();
+        // Return the test result
+        return seastar::make_ready_future<int>(test_result);
+    });
 }
