@@ -71,10 +71,12 @@ int main(int ac, char** av) {
 
             std::cout << " ### http " << std::endl;
 
-            fmt::print("{} {}:80{}\n", method, e.addr_list.front(), path);
+            fmt::print("{} {}:10000{}\n", method, e.addr_list.front(), path);
 
-            std::cout << " ### http make client " << std::endl;
-            cln = std::make_unique<http::experimental::client>(socket_address(e.addr_list.front(), 80));
+            auto addr = e.addr_list.front();
+            fmt::print("Attempting to connect to {}:10000\n", addr);
+            auto address = socket_address(addr, 10000);
+            cln = std::make_unique<http::experimental::client>(address);
 
             std::cout << " ### make request " << std::endl;
             auto req = http::request::make(method, host, path);
