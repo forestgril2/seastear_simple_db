@@ -1,2 +1,4 @@
 .cache
 build
+src/*json.hh
+src/*json.cc
