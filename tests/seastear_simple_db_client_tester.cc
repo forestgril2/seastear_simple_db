@@ -53,10 +53,8 @@ int main(int ac, char** av) {
             ("method", bpo::value<std::string>()->default_value("GET"), "Method to use")
             ("file", bpo::value<std::string>(), "File to get body from (no body if missing)")
     ;
-    std::cout << " ### Added options. " << std::endl;
 
     return app.run(ac, av, [&] {
-        std::cout << " ### Started app, creating config. " << std::endl;
 
         auto&& config = app.configuration();
         auto host = config["host"].as<std::string>();
@@ -65,24 +63,18 @@ int main(int ac, char** av) {
         auto body = config.count("file") == 0 ? std::string("") : config["file"].as<std::string>();
 
         return seastar::async([=] {
-                std::cout << " ### Geting host. " << std::endl;
             net::hostent e = net::dns::get_host_by_name(host, net::inet_address::family::INET).get();
             std::unique_ptr<http::experimental::client> cln;
-
-            std::cout << " ### http " << std::endl;
 
             fmt::print("{} {}:10000{}\n", method, e.addr_list.front(), path);
 
             auto addr = e.addr_list.front();
-            fmt::print("Attempting to connect to {}:10000\n", addr);
             auto address = socket_address(addr, 10000);
             cln = std::make_unique<http::experimental::client>(address);
 
-            std::cout << " ### make request " << std::endl;
             auto req = http::request::make(method, host, path);
             if (body != "") {
 
-                std::cout << " ### opening file " << std::endl;
                 future<file> f = open_file_dma(body, open_flags::ro);
                 req.write_body("txt", [ f = std::move(f) ] (output_stream<char>&& out) mutable {
                     return seastar::async([f = std::move(f), out = std::move(out)] () mutable {
@@ -91,12 +83,10 @@ int main(int ac, char** av) {
                         out.flush().get();
                         out.close().get();
                         in.close().get();
-                        std::cout << " ### file closed" << std::endl;
                     });
                 });
             }
 
-            std::cout << " ### send request " << std::endl;
             cln->make_request(std::move(req), [] (const http::reply& rep, input_stream<char>&& in) {
                 fmt::print("Reply status {}\n--------8<--------\n", rep._status);
                 return seastar::async([in = std::move(in)] () mutable {
@@ -105,7 +95,6 @@ int main(int ac, char** av) {
                 });
             }).get();
 
-            std::cout << " ### close client " << std::endl;
             cln->close().get();
         }).handle_exception([](auto ep) {
             fmt::print("Error: {}", ep);
