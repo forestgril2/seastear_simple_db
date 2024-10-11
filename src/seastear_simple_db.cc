@@ -106,45 +106,11 @@ int main(int ac, char** av) {
     app_template app;
 
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "HTTP Server port");
-    app.add_options()("prometheus_port", bpo::value<uint16_t>()->default_value(9180), "Prometheus port. Set to zero in order to disable.");
-    app.add_options()("prometheus_address", bpo::value<sstring>()->default_value("0.0.0.0"), "Prometheus address");
-    app.add_options()("prometheus_prefix", bpo::value<sstring>()->default_value("seastar_httpd"), "Prometheus metrics prefix");
 
     return app.run(ac, av, [&] {
         return seastar::async([&] {
             stop_signal stop_signal;
             auto&& config = app.configuration();
-            httpd::http_server_control prometheus_server;
-            bool prometheus_started = false;
-
-            auto stop_prometheus = defer([&] () noexcept {
-                if (prometheus_started) {
-                    std::cout << "Stoppping Prometheus server" << std::endl;  // This can throw, but won't.
-                    prometheus_server.stop().get();
-                }
-            });
-
-            uint16_t pport = config["prometheus_port"].as<uint16_t>();
-            if (pport) {
-                prometheus::config pctx;
-                net::inet_address prom_addr(config["prometheus_address"].as<sstring>());
-
-                pctx.metric_help = "seastar::httpd server statistics";
-                pctx.prefix = config["prometheus_prefix"].as<sstring>();
-
-                std::cout << "starting prometheus API server" << std::endl;
-                prometheus_server.start("prometheus").get();
-
-                prometheus::start(prometheus_server, pctx).get();
-
-                prometheus_started = true;
-
-                prometheus_server.listen(socket_address{prom_addr, pport}).handle_exception([prom_addr, pport] (auto ep) {
-                    std::cerr << seastar::format("Could not start Prometheus API server on {}:{}: {}\n", prom_addr, pport, ep);
-                    return make_exception_future<>(ep);
-                }).get();
-
-            }
 
             uint16_t port = config["port"].as<uint16_t>();
             auto server = std::make_unique<http_server_control>();

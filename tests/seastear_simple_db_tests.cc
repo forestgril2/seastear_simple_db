@@ -19,9 +19,9 @@
 
 //using namespace seastar;
 
-const std::string hostname = "";
 const std::string k_ssdb_file_name = "seastear_simple_db";
 const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
+const unsigned k_secs_required_to_start = 1;
 
 // Function to check if a file exists and is executable
 bool is_executable(const std::string& file) {
@@ -38,7 +38,7 @@ pid_t execute_binary(const std::string& binaryPath) {
         exit(EXIT_FAILURE);
     } else if (pid == 0) {
  // Child process
-        execl(binaryPath.c_str(), binaryPath.c_str(), "--no-daemon", nullptr);
+        execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
         // If execl fails, exit with error
         perror("execl");
         exit(EXIT_FAILURE);
@@ -70,7 +70,6 @@ bool kill_binary(pid_t pid) {
     }
     return false;
 }
-
 
 bool is_process_alive(pid_t pid) {
     if (kill(pid, 0) == 0) {
@@ -107,11 +106,26 @@ TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeTestExits) {
    ASSERT_NE(pid, -1);
    sleep(5);
    ASSERT_TRUE(is_process_alive(pid)) << "Server binary is not alive";
+   const auto killed = kill_binary(pid);
+   ASSERT_EQ(killed, true);
 }
 
-//TEST(SeastearSimpleDbTests, ServerAcceptsAndRespondsToAGetRequest) {
-//   const auto pid = execute_binary(k_ssdb_file_name);
-//   ASSERT_NE(pid, -1);
-//   sleep(5);
-//   ASSERT_TRUE(is_process_alive(pid)) << "Server binary is not alive";
-//}
+class SeastearSimpleDbTestFixture : public ::testing::Test {
+protected:
+    pid_t server_pid;
+
+    virtual void SetUp() override {
+        server_pid = execute_binary(k_ssdb_file_name);
+        ASSERT_NE(server_pid, -1) << "Failed to start the server binary.";
+        sleep(k_secs_required_to_start);
+    }
+
+    virtual void TearDown() override {
+        bool killed = kill_binary(server_pid);
+        ASSERT_TRUE(killed) << "Failed to kill the server binary.";
+    }
+};
+
+TEST_F(SeastearSimpleDbTestFixture, ServerAcceptsAndRespondsToAGetRequest) {
+    ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive during test execution.";
+}
