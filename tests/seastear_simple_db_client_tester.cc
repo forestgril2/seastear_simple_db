@@ -36,46 +36,79 @@ using namespace seastar;
 namespace bpo = boost::program_options;
 
 struct printer {
-    future<consumption_result<char>> operator() (temporary_buffer<char> buf) {
+    future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
         if (buf.empty()) {
             return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
         }
-        fmt::print("{}", sstring(buf.get(), buf.size()));
+        fmt::print("{}\n", sstring(buf.get(), buf.size()));
         return make_ready_future<consumption_result<char>>(continue_consuming());
     }
+};
+
+class ClientTester {
+public:
+    ClientTester(const std::string& host, uint16_t port)
+        : _host(host), _port(port) {}
+
+    future<> connect() {
+        return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
+            auto addr = e.addr_list.front();
+            socket_address address(addr, _port);
+            _client = std::make_unique<http::experimental::client>(address);
+            return make_ready_future<>();
+        });
+    }
+
+    future<> make_request(const std::string& method, const std::string& path) {
+        auto req = http::request::make(method, _host, path);
+        return _client->make_request(std::move(req), [this](const http::reply& rep, input_stream<char>&& in) {
+            fmt::print("Reply status: {}\n", rep._status);
+            return in.consume(printer{}).then([in = std::move(in)]() mutable {
+                return in.close();
+            });
+        });
+    }
+
+    future<> close() {
+        if (_client) {
+            return _client->close();
+        } else {
+            return make_ready_future<>();
+        }
+    }
+
+private:
+    std::string _host;
+    uint16_t _port;
+    std::unique_ptr<http::experimental::client> _client;
 };
 
 int main(int ac, char** av) {
     app_template app;
 
     return app.run(ac, av, [&] {
-
-        auto&& config = app.configuration();
         auto host = std::string("localhost");
         auto path = std::string("/");
         auto method = std::string("GET");
+        uint16_t port = 10000;
 
         return seastar::async([=] {
-            net::hostent e = net::dns::get_host_by_name(host, net::inet_address::family::INET).get();
-            std::unique_ptr<http::experimental::client> cln;
+            ClientTester client(host, port);
 
-            auto addr = e.addr_list.front();
-            auto address = socket_address(addr, 10000);
-            cln = std::make_unique<http::experimental::client>(address);
+            // Connect to the server
+            client.connect().get();
 
-            auto req = http::request::make(method, host, path);
+            // Make the HTTP request
+            client.make_request(method, path).get();
 
-            cln->make_request(std::move(req), [] (const http::reply& rep, input_stream<char>&& in) {
-                fmt::print("Reply status {}\n--------8<--------\n", rep._status);
-                return seastar::async([in = std::move(in)] () mutable {
-                    in.consume(printer{}).get();
-                    in.close().get();
-                });
-            }).get();
-
-            cln->close().get();
-        }).handle_exception([](auto ep) {
-            fmt::print("Error: {}", ep);
+            // Close the client connection
+            client.close().get();
+        }).handle_exception([](std::exception_ptr ep) {
+            try {
+                std::rethrow_exception(ep);
+            } catch (const std::exception& e) {
+                fmt::print("Error: {}\n", e.what());
+            }
         });
     });
 }
