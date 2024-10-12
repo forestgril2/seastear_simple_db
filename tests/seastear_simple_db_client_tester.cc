@@ -92,7 +92,7 @@ int main(int ac, char** av) {
     uint16_t port = 10000;
 
     return app.run(ac, av, [&] -> future<> {
-        return seastar::do_with(ClientTester(host, port), [=](ClientTester& client) -> future<> {
+        return seastar::do_with(ClientTester(host, port), seastar::coroutine::lambda([=](ClientTester& client) -> future<> {
             try {
                 co_await client.connect();
                 co_await client.make_request(method, path);
@@ -102,6 +102,6 @@ int main(int ac, char** av) {
                     fmt::print("Error: {}\n", e.what());
             }
             co_return;
-        });
+        }));
     });
 }
