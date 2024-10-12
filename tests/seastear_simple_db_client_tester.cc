@@ -19,6 +19,12 @@
  * Copyright (C) 2022 ScyllaDB Ltd.
  */
 
+#include <memory>
+#include <seastar/coroutine/maybe_yield.hh>
+#include <seastar/core/coroutine.hh>
+#include <seastar/core/do_with.hh>
+#include <seastar/util/later.hh>
+
 #include <seastar/core/app-template.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/shared_ptr.hh>
@@ -54,7 +60,7 @@ public:
         return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
             auto addr = e.addr_list.front();
             socket_address address(addr, _port);
-            _client = std::make_unique<http::experimental::client>(address);
+            _client = std::make_shared<http::experimental::client>(address);
             return make_ready_future<>();
         });
     }
@@ -71,16 +77,24 @@ public:
 
     future<> close() {
         if (_client) {
+            fmt::print("Closing client\n");
             return _client->close();
         } else {
+            fmt::print("Client doesn't exist already (can't close)\n");
             return make_ready_future<>();
         }
+    }
+
+    ~ClientTester()
+    {
+        
+        fmt::print("ClientTester DESTRUCTOR\n");
     }
 
 private:
     std::string _host;
     uint16_t _port;
-    std::unique_ptr<http::experimental::client> _client;
+    std::shared_ptr<http::experimental::client> _client;
 };
 
 int main(int ac, char** av) {
@@ -90,18 +104,19 @@ int main(int ac, char** av) {
     auto path = std::string("/");
     auto method = std::string("GET");
     uint16_t port = 10000;
-
-    return app.run(ac, av, [&] -> future<> {
-        return seastar::do_with(ClientTester(host, port), seastar::coroutine::lambda([=](ClientTester& client) -> future<> {
-            try {
-                co_await client.connect();
-                co_await client.make_request(method, path);
-                co_await client.close();
-
-            } catch (const std::exception& e) {
-                    fmt::print("Error: {}\n", e.what());
-            }
-            co_return;
-        }));
+    
+    return app.run(ac, av, [=] -> future<> {
+        return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<> {
+            co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<> {
+                co_await seastar::coroutine::maybe_yield();
+                try {
+                    co_await client.connect();
+                    co_await client.make_request(method, path);
+                    co_await client.close();
+                } catch (const std::exception& e) {
+                        fmt::print("Error: {}\n", e.what());
+                }
+            }));
+        });
     });
 }
