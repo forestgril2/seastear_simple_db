@@ -55,12 +55,25 @@ class ClientTester {
 public:
     ClientTester(const std::string& host, uint16_t port)
         : _host(host), _port(port) {}
+    
+    ClientTester(const ClientTester& other) = delete;
+
+    ClientTester(ClientTester&& other)
+        : _host(other._host), _port(other._port), _client(std::move(other._client))
+    {
+        fmt::print("ClientTester MOVE constructor\n");
+    }
+
+    ~ClientTester()
+    {
+        fmt::print("ClientTester DESTRUCTOR\n");
+    }
 
     future<> connect() {
         return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
             auto addr = e.addr_list.front();
             socket_address address(addr, _port);
-            _client = std::make_shared<http::experimental::client>(address);
+            _client = std::make_unique<http::experimental::client>(address);
             return make_ready_future<>();
         });
     }
@@ -85,16 +98,10 @@ public:
         }
     }
 
-    ~ClientTester()
-    {
-        
-        fmt::print("ClientTester DESTRUCTOR\n");
-    }
-
 private:
     std::string _host;
     uint16_t _port;
-    std::shared_ptr<http::experimental::client> _client;
+    std::unique_ptr<http::experimental::client> _client;
 };
 
 int main(int ac, char** av) {
