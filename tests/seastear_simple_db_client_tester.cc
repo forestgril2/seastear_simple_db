@@ -19,90 +19,9 @@
  * Copyright (C) 2022 ScyllaDB Ltd.
  */
 
-#include <memory>
-#include <seastar/coroutine/maybe_yield.hh>
-#include <seastar/core/coroutine.hh>
-#include <seastar/core/do_with.hh>
-#include <seastar/util/later.hh>
 
 #include <seastar/core/app-template.hh>
-#include <seastar/core/reactor.hh>
-#include <seastar/core/shared_ptr.hh>
-#include <seastar/core/iostream.hh>
-#include <seastar/core/fstream.hh>
-#include <seastar/core/thread.hh>
-#include <seastar/http/client.hh>
-#include <seastar/http/request.hh>
-#include <seastar/http/reply.hh>
-#include <seastar/net/inet_address.hh>
-#include <seastar/net/dns.hh>
-#include <seastar/net/tls.hh>
-
-using namespace seastar;
-namespace bpo = boost::program_options;
-
-struct printer {
-    future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
-        if (buf.empty()) {
-            return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
-        }
-        fmt::print("{}\n", sstring(buf.get(), buf.size()));
-        return make_ready_future<consumption_result<char>>(continue_consuming());
-    }
-};
-
-class ClientTester {
-public:
-    ClientTester(const std::string& host, uint16_t port)
-        : _host(host), _port(port) {}
-    
-    ClientTester(const ClientTester& other) = delete;
-
-    ClientTester(ClientTester&& other)
-        : _host(other._host), _port(other._port), _client(std::move(other._client))
-    {
-        fmt::print("ClientTester MOVE constructor\n");
-    }
-
-    ~ClientTester()
-    {
-        fmt::print("ClientTester DESTRUCTOR\n");
-    }
-
-    future<> connect() {
-        return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
-            auto addr = e.addr_list.front();
-            socket_address address(addr, _port);
-            _client = std::make_unique<http::experimental::client>(address);
-            return make_ready_future<>();
-        });
-    }
-
-    future<> make_request(const std::string& method, const std::string& path) {
-        auto req = http::request::make(method, _host, path);
-        return _client->make_request(std::move(req), [this](const http::reply& rep, input_stream<char>&& in) {
-            fmt::print("Reply status: {}\n", rep._status);
-            return in.consume(printer{}).then([in = std::move(in)]() mutable {
-                return in.close();
-            });
-        });
-    }
-
-    future<> close() {
-        if (_client) {
-            fmt::print("Closing client\n");
-            return _client->close();
-        } else {
-            fmt::print("Client doesn't exist already (can't close)\n");
-            return make_ready_future<>();
-        }
-    }
-
-private:
-    std::string _host;
-    uint16_t _port;
-    std::unique_ptr<http::experimental::client> _client;
-};
+#include "ClientTester.hh"
 
 int main(int ac, char** av) {
     app_template app;
