@@ -1,3 +1,4 @@
+#include <exception>
 #include <gtest/gtest.h>
 
 #include <iostream>
@@ -17,6 +18,8 @@
 #include <seastar/net/inet_address.hh>
 #include <seastar/net/dns.hh>
 #include <seastar/net/tls.hh>
+
+#include "ClientTester.hh"
 
 
 const std::string k_ssdb_file_name = "seastear_simple_db";
@@ -114,88 +117,52 @@ TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeTestExits) {
 using namespace seastar;
 namespace bpo = boost::program_options;
 
-struct printer {
-    future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
-        if (buf.empty()) {
-            return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
-        }
-        fmt::print("{}\n", sstring(buf.get(), buf.size()));
-        return make_ready_future<consumption_result<char>>(continue_consuming());
-    }
-};
-
-class ClientTester {
-public:
-    ClientTester(const std::string& host, uint16_t port)
-        : _host(host), _port(port) {}
-
-    future<> connect() {
-        return net::dns::get_host_by_name(_host, net::inet_address::family::INET).then([this](net::hostent e) {
-            auto addr = e.addr_list.front();
-            socket_address address(addr, _port);
-            _client = std::make_unique<http::experimental::client>(address);
-            return make_ready_future<>();
-        });
-    }
-
-    future<> make_request(const std::string& method, const std::string& path) {
-        auto req = http::request::make(method, _host, path);
-        return _client->make_request(std::move(req), [this](const http::reply& rep, input_stream<char>&& in) {
-            fmt::print("Reply status: {}\n", rep._status);
-            return in.consume(printer{}).then([in = std::move(in)]() mutable {
-                return in.close();
-            });
-        });
-    }
-
-    future<> close() {
-        if (_client) {
-            return _client->close();
-        } else {
-            return make_ready_future<>();
-        }
-    }
-
-private:
-    std::string _host;
-    uint16_t _port;
-    std::unique_ptr<http::experimental::client> _client;
-};
-
 
 class SeastearSimpleDbTestFixture : public ::testing::Test {
 protected:
+    std::unique_ptr<ClientTester> client_tester;
     pid_t server_pid;
 
-    virtual void SetUp() override {
+    void SetUp() {
+         // Initialize the ClientTester for each test case
+        client_tester = std::make_unique<ClientTester>("localhost", 10000);
         server_pid = execute_binary(k_ssdb_file_name);
         ASSERT_NE(server_pid, -1) << "Failed to start the server binary.";
         sleep(k_secs_required_to_start);
+        ASSERT_NO_THROW(client_tester->connect().get()) << "ClientTester failed to connect.";
     }
 
-    virtual void TearDown() override {
+    void TearDown() {
         bool killed = kill_binary(server_pid);
         ASSERT_TRUE(killed) << "Failed to kill the server binary.";
+
+        if (client_tester) {
+            ASSERT_NO_THROW(client_tester->close().get()) << "Failed to close ClientTester connection.";
+        }
     }
 };
 
 TEST_F(SeastearSimpleDbTestFixture, ServerAcceptsAndRespondsToAGetRequest) {
-   ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive";
-//    seastar::future<> test_future = seastar::async([] {
-//        ClientTester client("localhost", 10000);
-//        client.connect().get();
-//        client.make_request("GET", "/").get();
-//        client.close().get();
-//    }).handle_exception([](std::exception_ptr ep) {
-//        try {
-//            std::rethrow_exception(ep);
-//        } catch (const std::exception& e) {
-//            FAIL() << "Exception occurred: " << e.what();
-//        }
-//    });
-//
-//    test_future.get();
-};
+    ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive";
+
+    client_tester->make_request("GET", "/")
+    .then([] {
+        SUCCEED() << "ClientTester GET request succeeded.";
+        return;
+    }).handle_exception([](std::exception_ptr e) {
+        try {
+            if (e) {
+                std::rethrow_exception(e);  // Rethrow to catch specific type of exception
+            }
+        } catch (const std::exception& e) {
+            FAIL() << "ClientTester GET request failed: " << e.what();
+        } catch (...) {
+            FAIL() << "ClientTester GET request failed with an unknown exception.";
+        }
+    });
+
+    FAIL() << "ClientTester GET request failed, exception should follow.";
+}
 
 int main(int argc, char** argv) {
     // Initialize Google Test
