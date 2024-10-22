@@ -25,24 +25,8 @@
 
 int main(int ac, char** av) {
     app_template app;
-
-    auto host = std::string("localhost");
-    auto path = std::string("/");
-    auto method = std::string("GET");
-    uint16_t port = 10000;
     
     return app.run(ac, av, [=] -> future<> {
-        return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<> {
-            co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<> {
-                co_await seastar::coroutine::maybe_yield();
-                try {
-                    co_await client.connect();
-                    co_await client.make_request(method, path);
-                    co_await client.close();
-                } catch (const std::exception& e) {
-                        fmt::print("Error: {}\n", e.what());
-                }
-            }));
-        });
+        co_await request("GET", "/");
     });
 }

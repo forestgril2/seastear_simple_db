@@ -140,3 +140,24 @@ private:
     uint16_t _port;
     std::unique_ptr<http::experimental::client> _client;
 };
+
+
+    
+future<> request(std::string&& method, std::string&& path) 
+{
+    auto host = std::string("localhost");
+    uint16_t port = 10000;
+
+    return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<> {
+        co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<> {
+            co_await seastar::coroutine::maybe_yield();
+            try {
+                co_await client.connect();
+                co_await client.make_request(method, path);
+                co_await client.close();
+            } catch (const std::exception& e) {
+                    fmt::print("Error: {}\n", e.what());
+            }
+        }));
+    });
+};
