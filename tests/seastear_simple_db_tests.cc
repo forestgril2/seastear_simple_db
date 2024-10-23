@@ -150,6 +150,15 @@ namespace bpo = boost::program_options;
 //}
 //
 
+future<void> MyTest()
+{
+    const auto pid = execute_binary(k_ssdb_file_name);
+    sleep(1);
+    const auto get_res =  co_await request("GET", "/");
+    std::cout << " ### Test0: GET should respond with \"hello\", responds with: " << get_res << std::endl;
+    const auto killed = kill_binary(pid);
+}
+
 int main(int argc, char** argv) {
     // Initialize Google Test
     ::testing::InitGoogleTest(&argc, argv);
@@ -160,14 +169,7 @@ int main(int argc, char** argv) {
     // Run Seastar application
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         int test_result = RUN_ALL_TESTS();
-
-        const auto pid = execute_binary(k_ssdb_file_name);
-        sleep(1);
-        const auto get_res =  co_await request("GET", "/");
-
-        std::cout << " ### Test0: GET should respond with \"hello\", responds with: " << get_res << std::endl;
-        
-        const auto killed = kill_binary(pid);
+        co_await MyTest();
         co_return co_await seastar::make_ready_future<int>(test_result);
     });
 }
