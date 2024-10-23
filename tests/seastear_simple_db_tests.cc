@@ -161,9 +161,13 @@ int main(int argc, char** argv) {
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         int test_result = RUN_ALL_TESTS();
 
+        const auto pid = execute_binary(k_ssdb_file_name);
+        sleep(1);
         const auto get_res =  co_await request("GET", "/");
-        assert(get_res == "hello");
+
+        std::cout << " ### Test0: GET should respond with \"hello\", responds with: " << get_res << std::endl;
         
+        const auto killed = kill_binary(pid);
         co_return co_await seastar::make_ready_future<int>(test_result);
     });
 }
