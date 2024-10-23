@@ -150,12 +150,19 @@ namespace bpo = boost::program_options;
 //}
 //
 
-future<void> MyTest()
+future<void> DbRespTest(std::string&& method, std::string&& path, const std::string& res_expect)
 {
     const auto pid = execute_binary(k_ssdb_file_name);
     sleep(1);
-    const auto get_res =  co_await request("GET", "/");
-    std::cout << " ### Test0: GET should respond with \"hello\", responds with: " << get_res << std::endl;
+    const auto get_res =  co_await request(std::move(method), std::move(path));
+
+    if (get_res != res_expect)
+    {
+        std::cerr << " ### Assertion failed. Method " << method << " at path " << path << " expected " << res_expect << " while the response is: " << get_res << std::endl;
+        const auto killed = kill_binary(pid);
+        assert(false);
+    }
+
     const auto killed = kill_binary(pid);
 }
 
@@ -169,7 +176,9 @@ int main(int argc, char** argv) {
     // Run Seastar application
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         int test_result = RUN_ALL_TESTS();
-        co_await MyTest();
+
+        co_await DbRespTest("GET", "/", "\"hello\"");
+
         co_return co_await seastar::make_ready_future<int>(test_result);
     });
 }
