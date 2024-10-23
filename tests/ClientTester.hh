@@ -124,7 +124,7 @@ future<std::string> request(std::string&& method, std::string&& path)
     uint16_t port = 10000;
 
     return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<std::string> {
-        return seastar::yield().then(seastar::coroutine::lambda([&] () -> future<std::string> {
+        co_return co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<std::string> {
             co_await seastar::coroutine::maybe_yield();
             std::string res;
             try {
