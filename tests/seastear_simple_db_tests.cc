@@ -118,51 +118,37 @@ using namespace seastar;
 namespace bpo = boost::program_options;
 
 
-class SeastearSimpleDbTestFixture : public ::testing::Test {
-protected:
-    std::unique_ptr<ClientTester> client_tester;
-    pid_t server_pid;
-
-    void SetUp() {
-         // Initialize the ClientTester for each test case
-        client_tester = std::make_unique<ClientTester>("localhost", 10000);
-        server_pid = execute_binary(k_ssdb_file_name);
-        ASSERT_NE(server_pid, -1) << "Failed to start the server binary.";
-        sleep(k_secs_required_to_start);
-        ASSERT_NO_THROW(client_tester->connect().get()) << "ClientTester failed to connect.";
-    }
-
-    void TearDown() {
-        bool killed = kill_binary(server_pid);
-        ASSERT_TRUE(killed) << "Failed to kill the server binary.";
-
-        if (client_tester) {
-            ASSERT_NO_THROW(client_tester->close().get()) << "Failed to close ClientTester connection.";
-        }
-    }
-};
-
-TEST_F(SeastearSimpleDbTestFixture, ServerAcceptsAndRespondsToAGetRequest) {
-    ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive";
-
-    client_tester->make_request("GET", "/")
-    .then([] {
-        SUCCEED() << "ClientTester GET request succeeded.";
-        return;
-    }).handle_exception([](std::exception_ptr e) {
-        try {
-            if (e) {
-                std::rethrow_exception(e);  // Rethrow to catch specific type of exception
-            }
-        } catch (const std::exception& e) {
-            FAIL() << "ClientTester GET request failed: " << e.what();
-        } catch (...) {
-            FAIL() << "ClientTester GET request failed with an unknown exception.";
-        }
-    });
-
-    FAIL() << "ClientTester GET request failed, exception should follow.";
-}
+//class SeastearSimpleDbTestFixture : public ::testing::Test {
+//protected:
+//    pid_t server_pid;
+//
+//    void SetUp() {
+//         // Initialize the ClientTester for each test case
+//        server_pid = execute_binary(k_ssdb_file_name);
+//        ASSERT_NE(server_pid, -1) << "Failed to start the server binary.";
+//        sleep(k_secs_required_to_start);
+//    }
+//
+//    void TearDown() {
+//        bool killed = kill_binary(server_pid);
+//        ASSERT_TRUE(killed) << "Failed to kill the server binary.";
+//    }
+//};
+//
+//TEST_F(SeastearSimpleDbTestFixture, ClientBinarySendsGetMultipleTimesInARow) {
+//    ASSERT_TRUE(is_process_alive(server_pid)) << "Server binary is not alive";
+//
+//    pid_t client_pid;
+//    for(int i=0; i<100; ++i)
+//    {
+//        client_pid = execute_binary(k_ssdbct_file_name);
+//        ASSERT_NE(client_pid, -1) << "Failed to start the client binary.";
+//
+//        usleep(500000);
+//
+//    }
+//}
+//
 
 int main(int argc, char** argv) {
     // Initialize Google Test
@@ -173,9 +159,11 @@ int main(int argc, char** argv) {
 
     // Run Seastar application
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
-        // Run all the tests
         int test_result = RUN_ALL_TESTS();
-        // Return the test result
-        return seastar::make_ready_future<int>(test_result);
+
+        const auto get_res =  co_await request("GET", "/");
+        assert(get_res == "hello");
+        
+        co_return co_await seastar::make_ready_future<int>(test_result);
     });
 }

@@ -13,6 +13,8 @@ set(SEASTAR_LIBRARY_DIR "${SEASTAR_PROJECT_DIR}/build/${MODE}")
 set(SEASTAR_LIB "${SEASTAR_LIBRARY_DIR}/libseastar.a")
 set(SEASTAR_PC "${SEASTAR_LIBRARY_DIR}/seastar.pc")
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SEASTAR REQUIRED "${SEASTAR_PC}")
 

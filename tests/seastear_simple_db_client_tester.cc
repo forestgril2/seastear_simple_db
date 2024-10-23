@@ -22,11 +22,14 @@
 
 #include <seastar/core/app-template.hh>
 #include "ClientTester.hh"
+#include "seastar/core/future.hh"
 
 int main(int ac, char** av) {
     app_template app;
     
     return app.run(ac, av, [=] -> future<> {
-        co_await request("GET", "/");
+        auto reply = co_await request("GET", "/");
+        std::cout << " ### Reply from the client tester: " << reply << std::endl;
+        co_return;// seastar::make_ready_future<>();;
     });
 }

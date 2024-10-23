@@ -1,3 +1,7 @@
+#include "seastar/core/temporary_buffer.hh"
+#include <cstddef>
+#include <string>
+
 #include <seastar/coroutine/maybe_yield.hh>
 #include <seastar/core/coroutine.hh>
 #include <seastar/core/do_with.hh>
@@ -18,69 +22,36 @@
 using namespace seastar;
 namespace bpo = boost::program_options;
 
-struct printer {
+struct StreamConsumer {
 
-    printer()
+    StreamConsumer()
     {
-        fmt::print("Printer constructor\n");
+        fmt::print("StreamConsumer constructor\n");
     }
 
-    printer(printer&&)
+    StreamConsumer(StreamConsumer&&)
     {
-        fmt::print("Printer MOVE constructor\n");
+        fmt::print("StreamConsumer MOVE constructor\n");
     }
 
-    ~printer()
+    ~StreamConsumer()
     {
-        fmt::print("Printer destructor\n");
+        fmt::print("StreamConsumer destructor\n");
     }
 
     future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
         if (buf.empty()) {
-            fmt::print("Printer buffer is empty, stop consuming return\n");
+            fmt::print("StreamConsumer buffer is empty, stop consuming return\n");
             return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
         }
-        fmt::print("Printer buffer is not empty, will print the reply now:\n");
-        fmt::print("{}\n", sstring(buf.get(), buf.size()));
+        fmt::print("StreamConsumer buffer is not empty, printing the reply:\n");
+
+        result = std::string(buf.get(), buf.size());
+        fmt::print("{}\n", result);
         return make_ready_future<consumption_result<char>>(continue_consuming());
     }
+    std::string result;
 };
-
-// A LEGIT CLIENT CLOSE:
-//
-// INFO  2024-10-21 12:15:27,070 seastar - Reactor backend: io_uring
-// INFO  2024-10-21 12:15:27,087 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// Printer constructor
-// Printer MOVE constructor
-// Printer buffer is not empty, will print the reply now:
-// "hello"
-// Printer buffer is empty, stop consuming return
-// Printer destructor
-// Closing reply input stream
-// Printer destructor
-// Closing client
-// ClientTester DESTRUCTOR
-// [1] + Done                       "/usr/bin/gdb" --interpreter=mi --tty=${DbgTerm} 0<"/tmp/Microsoft-MIEngine-In-cufvinrr.5kc" 1>"/tmp/Microsoft-MIEngine-Out-jvw5nsya.ihm"
-// vboxuser@Ubuntu24:~/
-// 
-// FAILING WIHT A SEGFAULT in seastar::data_source::get()
-//
-// INFO  2024-10-21 12:17:19,803 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// Printer constructor
-// Printer MOVE constructor
-// Printer buffer is not empty, will print the reply now:
-// "hello"
-// Printer MOVE constructor
-// Printer destructor
-// Printer destructor
-// SEGFAULT in seastar::data_source::get()
-
 class ClientTester {
 public:
     ClientTester(const std::string& host, uint16_t port)
@@ -108,21 +79,25 @@ public:
         });
     }
 
-    future<> make_request(const std::string& method, const std::string& path) {
-        auto req = http::request::make(method, _host, path);
-        return _client->make_request(std::move(req), [this](const http::reply& rep, input_stream<char>&& in) {
+    future<std::string> make_request(const std::string& method, const std::string& path) {
+            std::string result;
+            co_await _client->make_request(http::request::make(method, _host, path), [&result, this](const http::reply& rep, input_stream<char>&& in) -> future<> {
             fmt::print("Reply status: {}\n", rep._status);
-              // Wrap consume in try/catch to log potential exceptions
             try {
-                return in.consume(printer{}).then([in = std::move(in)]() mutable {
+                    StreamConsumer consumer;
+                    co_await in.consume(consumer);
                     fmt::print("Closing reply input stream\n");
-                    return in.close();
-                });
-            } catch (const std::exception& e) {
+                    co_await in.close();
+                    fmt::print("Storing input stream reply\n");
+                    result = std::move(consumer.result);
+                }
+            catch (const std::exception& e) {
                 fmt::print("Error while consuming input stream: {}\n", e.what());
-                return make_exception_future<>(std::current_exception());
+                throw;
             }
+            co_return;
         });
+        co_return result;
     }
 
     future<> close() {
@@ -143,21 +118,58 @@ private:
 
 
     
-future<> request(std::string&& method, std::string&& path) 
+future<std::string> request(std::string&& method, std::string&& path) 
 {
     auto host = std::string("localhost");
     uint16_t port = 10000;
 
-    return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<> {
-        co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<> {
+    return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<std::string> {
+        return seastar::yield().then(seastar::coroutine::lambda([&] () -> future<std::string> {
             co_await seastar::coroutine::maybe_yield();
+            std::string res;
             try {
                 co_await client.connect();
-                co_await client.make_request(method, path);
+                res = co_await client.make_request(method, path);
                 co_await client.close();
             } catch (const std::exception& e) {
                     fmt::print("Error: {}\n", e.what());
             }
+            co_return res;
         }));
     });
 };
+
+// A LEGIT CLIENT CLOSE:
+//
+// INFO  2024-10-21 12:15:27,070 seastar - Reactor backend: io_uring
+// INFO  2024-10-21 12:15:27,087 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
+// ClientTester MOVE constructor
+// ClientTester DESTRUCTOR
+// Reply status: 200 OK
+// StreamConsumer constructor
+// StreamConsumer MOVE constructor
+// StreamConsumer buffer is not empty, will print the reply now:
+// "hello"
+// StreamConsumer buffer is empty, stop consuming return
+// StreamConsumer destructor
+// Closing reply input stream
+// StreamConsumer destructor
+// Closing client
+// ClientTester DESTRUCTOR
+// [1] + Done                       "/usr/bin/gdb" --interpreter=mi --tty=${DbgTerm} 0<"/tmp/Microsoft-MIEngine-In-cufvinrr.5kc" 1>"/tmp/Microsoft-MIEngine-Out-jvw5nsya.ihm"
+// vboxuser@Ubuntu24:~/
+// 
+// FAILING WIHT A SEGFAULT in seastar::data_source::get()
+//
+// INFO  2024-10-21 12:17:19,803 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
+// ClientTester MOVE constructor
+// ClientTester DESTRUCTOR
+// Reply status: 200 OK
+// StreamConsumer constructor
+// StreamConsumer MOVE constructor
+// StreamConsumer buffer is not empty, will print the reply now:
+// "hello"
+// StreamConsumer MOVE constructor
+// StreamConsumer destructor
+// StreamConsumer destructor
+// SEGFAULT in seastar::data_source::get()
