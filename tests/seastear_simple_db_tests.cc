@@ -1,4 +1,5 @@
 #include <exception>
+#include <format>
 #include <gtest/gtest.h>
 
 #include <iostream>
@@ -150,21 +151,53 @@ namespace bpo = boost::program_options;
 //}
 //
 
-future<void> DbRespTest(std::string&& method, std::string&& path, const std::string& res_expect)
-{
-    const auto pid = execute_binary(k_ssdb_file_name);
-    sleep(1);
-    const auto get_res =  co_await request(std::move(method), std::move(path));
 
-    if (get_res != res_expect)
+struct DbRespTest
+{
+    DbRespTest()
     {
-        std::cerr << " ### Assertion failed. Method " << method << " at path " << path << " expected " << res_expect << " while the response is: " << get_res << std::endl;
-        const auto killed = kill_binary(pid);
-        assert(false);
+        std::cout << " ##############################" << std::endl;
+        std::cout << " ### Starting DB test suite ###" << std::endl;
+        std::cout << " ##############################" << std::endl;
     }
 
-    const auto killed = kill_binary(pid);
-}
+    ~DbRespTest() 
+    {
+        std::cout << " ### FINISHED DB test suite " << std::endl;
+        if (!failed_cases.empty())
+        {
+            std::cout << " ###########################################" << std::endl;
+            std::cout << " ### FAILURE! Failed cases listed below. ###" << std::endl;
+            std::cout << " ###########################################" << std::endl;
+            for (auto fc : failed_cases)
+            {
+                std::cout << fc << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << " ##################################" << std::endl;
+            std::cout << " ### SUCCESS. ALL TESTS PASSED! ###" << std::endl;
+            std::cout << " ##################################" << std::endl;
+        }
+    }
+
+    future<void> operator()(std::string&& method, std::string&& path, const std::string& res_expect)
+    {
+        const auto pid = execute_binary(k_ssdb_file_name);
+        sleep(1);
+        const auto response =  co_await request(std::move(method), std::move(path));
+
+        if (response != std::format("\"{}\"",res_expect))
+        {
+            failed_cases.push_back(std::format("FAIL: Method {} at path {} expected \"{}\" while the response was: {}.", method, path, res_expect, response));
+        }
+
+        const auto killed = kill_binary(pid);
+    }
+
+    std::vector<std::string> failed_cases;
+};
 
 int main(int argc, char** argv) {
     // Initialize Google Test
@@ -177,7 +210,9 @@ int main(int argc, char** argv) {
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         int test_result = RUN_ALL_TESTS();
 
-        co_await DbRespTest("GET", "/", "\"hello\"");
+        DbRespTest db_suite{};
+        co_await db_suite("GET", "/", "hellox");
+        co_await db_suite("GET", "/", "hello");
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });
