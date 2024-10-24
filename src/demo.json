@@ -19,41 +19,45 @@
                         "application/json"
                     ],
                     "parameters": [
-                    {
-                     "name":"var2",
-                     "description":"Full path of file or directory",
-                     "required":true,
-                     "allowMultiple":true,
-                     "type":"string",
-                     "paramType":"path"
-                  },
-                  {
-                     "name":"var1",
-                     "description":"Full path of file or directory",
-                     "required":true,
-                     "allowMultiple":false,
-                     "type":"string",
-                     "paramType":"path"
-                  },
-                    {
-                     "name":"query_enum",
-                     "description":"The operation to perform",
-                     "required":true,
-                     "allowMultiple":false,
-                     "type":"string",
-                     "paramType":"query",
-                     "enum":["VAL1", "VAL2", "VAL3"]
-                  	}
+                        {
+                            "name": "var2",
+                            "description": "Full path of file or directory",
+                            "required": true,
+                            "allowMultiple": true,
+                            "type": "string",
+                            "paramType": "path"
+                        },
+                        {
+                            "name": "var1",
+                            "description": "Full path of file or directory",
+                            "required": true,
+                            "allowMultiple": false,
+                            "type": "string",
+                            "paramType": "path"
+                        },
+                        {
+                            "name": "query_enum",
+                            "description": "The operation to perform",
+                            "required": true,
+                            "allowMultiple": false,
+                            "type": "string",
+                            "paramType": "query",
+                            "enum": [
+                                "VAL1",
+                                "VAL2",
+                                "VAL3"
+                            ]
+                        }
                     ]
                 }
             ]
         }
     ],
-    "models" : {
+    "models": {
         "my_object": {
-           "id": "my_object",
-           "description": "Demonstrate an object",
-               "properties": {
+            "id": "my_object",
+            "description": "Demonstrate an object",
+            "properties": {
                 "var1": {
                     "type": "string",
                     "description": "The first parameter in the path"
@@ -62,13 +66,16 @@
                     "type": "string",
                     "description": "The second parameter in the path"
                 },
-                "enum_var" : {
+                "enum_var": {
                     "type": "string",
                     "description": "Demonstrate an enum returned, note this is not the same enum type of the request",
-                    "enum":["VAL1", "VAL2", "VAL3"]
+                    "enum": [
+                        "VAL1",
+                        "VAL2",
+                        "VAL3"
+                    ]
                 }
             }
         }
     }
 }
-

@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
     seastar::app_template app;
 
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
-        int test_result = RUN_ALL_TESTS();
+        const int test_result = RUN_ALL_TESTS();
 
         DbRespTest db_suite{};
         co_await db_suite.GET("/", "hello");
