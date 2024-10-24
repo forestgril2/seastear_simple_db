@@ -21,6 +21,7 @@
 #include <seastar/net/tls.hh>
 
 #include "ClientTester.hh"
+#include "seastar/core/future.hh"
 
 
 const std::string k_ssdb_file_name = "seastear_simple_db";
@@ -171,7 +172,7 @@ struct DbRespTest
             std::cout << " ###########################################" << std::endl;
             for (auto fc : failed_cases)
             {
-                std::cout << fc << std::endl;
+                std::cout << "     " << fc << std::endl;
             }
         }
         else
@@ -182,37 +183,43 @@ struct DbRespTest
         }
     }
 
-    future<void> operator()(std::string&& method, std::string&& path, const std::string& res_expect)
+    future<void> GET(std::string&& path, std::string&& res_expect)
+    {
+        co_return co_await (*this)("GET", std::move(path), "",std::move(res_expect));
+    }
+
+    future<void> operator()(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
     {
         const auto pid = execute_binary(k_ssdb_file_name);
-        sleep(1);
-        const auto response =  co_await request(std::move(method), std::move(path));
+        sleep(k_secs_required_to_start);
+        const auto response =  co_await request(method, path);
 
-        if (response != std::format("\"{}\"",res_expect))
+        if (response != std::format("\"{}\"", res_expect))
         {
-            failed_cases.push_back(std::format("FAIL: Method {} at path {} expected \"{}\" while the response was: {}.", method, path, res_expect, response));
+            failed_cases.emplace_back(
+                std::format("FAIL: Method {} at path {} expected \"{}\" while the response was: {}.", 
+                std::move(method), std::move(path), std::move(res_expect), std::move(response)
+            ));
         }
 
         const auto killed = kill_binary(pid);
+        co_return co_await seastar::make_ready_future<>(); 
     }
 
     std::vector<std::string> failed_cases;
 };
 
 int main(int argc, char** argv) {
-    // Initialize Google Test
     ::testing::InitGoogleTest(&argc, argv);
 
-    // Create Seastar app_template
     seastar::app_template app;
 
-    // Run Seastar application
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         int test_result = RUN_ALL_TESTS();
 
         DbRespTest db_suite{};
-        co_await db_suite("GET", "/", "hellox");
-        co_await db_suite("GET", "/", "hello");
+        co_await db_suite.GET("/", "hello");
+        co_await db_suite("POST", "/key0", "val0", "OK");
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });

@@ -118,7 +118,7 @@ private:
 
 
     
-future<std::string> request(std::string&& method, std::string&& path) 
+future<std::string> request(const std::string& method, const std::string& path) 
 {
     auto host = std::string("localhost");
     uint16_t port = 10000;
