@@ -185,15 +185,20 @@ struct DbRespTest
 
     future<void> GET(std::string&& path, std::string&& res_expect)
     {
-        co_return co_await (*this)("GET", std::move(path), "",std::move(res_expect));
+        co_return co_await req_once("GET", std::move(path), "",std::move(res_expect));
     }
 
-    future<void> operator()(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
+    future<void> req_once(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
     {
-        const auto pid = execute_binary(k_ssdb_file_name);
-        sleep(k_secs_required_to_start);
-        const auto response =  co_await request(method, path);
+        initBatch();
+        co_await req(std::move(method), std::move(path), std::move(body), std::move(res_expect));
+        finalizeBatch();
+        co_return co_await seastar::make_ready_future<>(); 
+    }
 
+    future<void> req(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
+    {
+        const auto response =  co_await request(method, path);
         if (response != std::format("\"{}\"", res_expect))
         {
             failed_cases.emplace_back(
@@ -201,11 +206,20 @@ struct DbRespTest
                 std::move(method), std::move(path), std::move(res_expect), std::move(response)
             ));
         }
-
-        const auto killed = kill_binary(pid);
         co_return co_await seastar::make_ready_future<>(); 
     }
 
+    void initBatch()
+    {
+        pid = execute_binary(k_ssdb_file_name);
+        sleep(k_secs_required_to_start);
+    }
+    void finalizeBatch()
+    {
+        const auto killed = kill_binary(pid);
+    }
+
+    pid_t pid;
     std::vector<std::string> failed_cases;
 };
 
@@ -219,7 +233,7 @@ int main(int argc, char** argv) {
 
         DbRespTest db_suite{};
         co_await db_suite.GET("/", "hello");
-        co_await db_suite("PUT", "/", "{\"key0\":\"val0\"}", "OK");
+        co_await db_suite.req_once("PUT", "/", "{\"key0\":\"val0\"}", "OK");
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });
