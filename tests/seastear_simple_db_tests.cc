@@ -181,14 +181,14 @@ struct DbRespTest
         }
     }
 
-    future<bool> test_GET(std::string&& path, std::string&& res_expect)
+    future<bool> test_GET(std::string&& key, std::string&& res_expect)
     {
-        co_return co_await test_req("GET", std::move(path), "",std::move(res_expect));
+        co_return co_await test_req("GET", std::string("//") + std::move(key), "",std::move(res_expect));
     }
 
-    future<bool> test_GET(const std::string& path, const std::string& res_expect)
+    future<bool> test_GET(const std::string& key, const std::string& res_expect)
     {
-        co_return co_await test_req("GET", path, "", res_expect);
+        co_return co_await test_req("GET", std::string("//") + key, "", res_expect);
     }
 
     future<bool> test_PUT(const std::string& key, const std::string& val, const std::string& res_expect)
@@ -203,7 +203,7 @@ struct DbRespTest
 
     future<bool> test_req(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
     {
-        const auto response =  co_await request(method, path);
+        const auto response =  co_await request(method, path, body);
         co_return co_await seastar::make_ready_future<bool>(check(
             response, std::move(method), std::move(path), std::move(body), std::move(res_expect)
         )); 
@@ -214,7 +214,7 @@ struct DbRespTest
                           const std::string& body, 
                           const std::string& res_expect)
     {
-        auto response =  co_await request(method, path);
+        auto response =  co_await request(method, path, body);
         co_return co_await seastar::make_ready_future<bool>(check(
             response, std::move(method), std::move(path), std::move(body), std::move(res_expect)
         )); 
@@ -287,19 +287,14 @@ int main(int argc, char** argv) {
         std::cout << " ###################################" << std::endl;
 
         if(!test_result)
-        {//Respond hello to GET on /
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_GET("/", server_hello_message);
-        }
-        if(!test_result)
         {//Respond hello to GET on //
             DbRespTest db_suite{};
-            test_result = co_await db_suite.test_GET("//", server_hello_message);
+            test_result = co_await db_suite.test_GET("", server_hello_message);
         }
         if(!test_result)
         {//Respond OK to key/val body PUT on /
             DbRespTest db_suite{};
-            test_result = co_await db_suite.test_req("PUT", "key0", "val0", "OK");
+            test_result = co_await db_suite.test_req("PUT", "//k", "v", "OK");
         }
         if(!test_result)
         {//Respond OK to key/val body PUT on /, Respond with val, when GET key
