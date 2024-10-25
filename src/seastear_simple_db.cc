@@ -88,7 +88,9 @@ void set_routes(routes& r) {
         return "OK";
     });
     function_handler* get_val_handler = new function_handler([](const_req req) {
-        return "val0";
+        const auto key = req.param.get_decoded_param("key");
+        const std::string val = "val0";
+        return val;
     });
     r.add(operation_type::GET, url("/"), hello_handler);
     r.add(operation_type::GET, url("/file").remainder("path"),

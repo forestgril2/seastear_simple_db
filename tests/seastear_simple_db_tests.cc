@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
         {//Respond OK to key/val body PUT on /, Respond with val, when GET key
             DbRespTest db_suite{};
             co_await db_suite.req("PUT", "/", "{\"key0\":\"val0\"}", "OK");
-            co_await db_suite.GET("/key0", "val0");
+            co_await db_suite.GET("//key0", "val0");
         }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
