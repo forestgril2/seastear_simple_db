@@ -81,25 +81,16 @@ public:
 };
 
 void set_routes(routes& r) {
-    function_handler* h1 = new function_handler([](const_req req) {
+    function_handler* hello_handler = new function_handler([](const_req req) {
         return "hello";
     });
-    function_handler* h2 = new function_handler([](std::unique_ptr<http::request> req) {
-        return make_ready_future<json::json_return_type>("json-future");
+    function_handler* put_val_handler = new function_handler([](const_req req) {
+        return "OK";
     });
-    r.add(operation_type::GET, url("/"), h1);
-    r.add(operation_type::GET, url("/jf"), h2);
+    r.add(operation_type::GET, url("/"), hello_handler);
     r.add(operation_type::GET, url("/file").remainder("path"),
             new directory_handler("/"));
-    demo_json::hello_world.set(r, [] (const_req req) {
-        demo_json::my_object obj;
-        obj.var1 = req.param.at("var1");
-        obj.var2 = req.param.at("var2");
-        demo_json::ns_hello_world::query_enum v = demo_json::ns_hello_world::str2query_enum(req.query_parameters.at("query_enum"));
-        // This demonstrate enum conversion
-        obj.enum_var = v;
-        return obj;
-    });
+    r.add(operation_type::PUT, url("/"), put_val_handler);
 }
 
 int main(int ac, char** av) {

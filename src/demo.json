@@ -8,74 +8,36 @@
     ],
     "apis": [
         {
-            "path": "/hello/world/{var1}/{var2}",
+            "path": "/{key}/{val}",
             "operations": [
                 {
-                    "method": "GET",
-                    "summary": "Returns the number of seconds since the system was booted",
+                    "method": "PUT",
+                    "summary": "Inserts a key/value pair",
                     "type": "long",
-                    "nickname": "hello_world",
+                    "nickname": "add_key_val",
                     "produces": [
                         "application/json"
                     ],
                     "parameters": [
                         {
-                            "name": "var2",
-                            "description": "Full path of file or directory",
-                            "required": true,
-                            "allowMultiple": true,
-                            "type": "string",
-                            "paramType": "path"
-                        },
-                        {
-                            "name": "var1",
-                            "description": "Full path of file or directory",
+                            "name": "key",
+                            "description": "Key of the entry in the DB",
                             "required": true,
                             "allowMultiple": false,
                             "type": "string",
                             "paramType": "path"
                         },
                         {
-                            "name": "query_enum",
-                            "description": "The operation to perform",
+                            "name": "val",
+                            "description": "Value of the entry in the DB",
                             "required": true,
                             "allowMultiple": false,
                             "type": "string",
-                            "paramType": "query",
-                            "enum": [
-                                "VAL1",
-                                "VAL2",
-                                "VAL3"
-                            ]
+                            "paramType": "path"
                         }
                     ]
                 }
             ]
         }
-    ],
-    "models": {
-        "my_object": {
-            "id": "my_object",
-            "description": "Demonstrate an object",
-            "properties": {
-                "var1": {
-                    "type": "string",
-                    "description": "The first parameter in the path"
-                },
-                "var2": {
-                    "type": "string",
-                    "description": "The second parameter in the path"
-                },
-                "enum_var": {
-                    "type": "string",
-                    "description": "Demonstrate an enum returned, note this is not the same enum type of the request",
-                    "enum": [
-                        "VAL1",
-                        "VAL2",
-                        "VAL3"
-                    ]
-                }
-            }
-        }
-    }
+    ]
 }

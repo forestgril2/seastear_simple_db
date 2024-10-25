@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
 
         DbRespTest db_suite{};
         co_await db_suite.GET("/", "hello");
-        co_await db_suite("POST", "/key0", "val0", "OK");
+        co_await db_suite("PUT", "/", "{\"key0\":\"val0\"}", "OK");
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });

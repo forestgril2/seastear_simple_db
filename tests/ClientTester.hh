@@ -26,28 +26,28 @@ struct StreamConsumer {
 
     StreamConsumer()
     {
-        fmt::print("StreamConsumer constructor\n");
+        //fmt::print("StreamConsumer constructor\n");
     }
 
     StreamConsumer(StreamConsumer&&)
     {
-        fmt::print("StreamConsumer MOVE constructor\n");
+        //fmt::print("StreamConsumer MOVE constructor\n");
     }
 
     ~StreamConsumer()
     {
-        fmt::print("StreamConsumer destructor\n");
+        //fmt::print("StreamConsumer destructor\n");
     }
 
     future<consumption_result<char>> operator()(temporary_buffer<char> buf) {
         if (buf.empty()) {
-            fmt::print("StreamConsumer buffer is empty, stop consuming return\n");
+            //fmt::print("StreamConsumer buffer is empty, stop consuming return\n");
             return make_ready_future<consumption_result<char>>(stop_consuming(std::move(buf)));
         }
-        fmt::print("StreamConsumer buffer is not empty, printing the reply:\n");
+        //fmt::print("StreamConsumer buffer is not empty, printing the reply:\n");
 
         result = std::string(buf.get(), buf.size());
-        fmt::print("{}\n", result);
+        //fmt::print("{}\n", result);
         return make_ready_future<consumption_result<char>>(continue_consuming());
     }
     std::string result;
@@ -62,12 +62,12 @@ public:
     ClientTester(ClientTester&& other)
         : _host(other._host), _port(other._port), _client(std::move(other._client))
     {
-        fmt::print("ClientTester MOVE constructor\n");
+        //fmt::print("ClientTester MOVE constructor\n");
     }
 
     ~ClientTester()
     {
-        fmt::print("ClientTester DESTRUCTOR\n");
+        //fmt::print("ClientTester DESTRUCTOR\n");
     }
 
     future<> connect() {
@@ -79,16 +79,19 @@ public:
         });
     }
 
-    future<std::string> make_request(const std::string& method, const std::string& path) {
+    // TODO: Prepare a version with a body writer, rather than a body string.
+    future<std::string> make_request(const std::string& method, const std::string& path, const std::string& body) {
             std::string result;
-            co_await _client->make_request(http::request::make(method, _host, path), [&result, this](const http::reply& rep, input_stream<char>&& in) -> future<> {
+            auto req = http::request::make(method, _host, path);
+            req.write_body("json",body);
+            co_await _client->make_request(std::move(req), [&result, this](const http::reply& rep, input_stream<char>&& in) -> future<> {
             fmt::print("Reply status: {}\n", rep._status);
             try {
                     StreamConsumer consumer;
                     co_await in.consume(consumer);
-                    fmt::print("Closing reply input stream\n");
+                    //fmt::print("Closing reply input stream\n");
                     co_await in.close();
-                    fmt::print("Storing input stream reply\n");
+                    //fmt::print("Storing input stream reply\n");
                     result = std::move(consumer.result);
                 }
             catch (const std::exception& e) {
@@ -102,7 +105,7 @@ public:
 
     future<> close() {
         if (_client) {
-            fmt::print("Closing client\n");
+            //fmt::print("Closing client\n");
             return _client->close();
         } else {
             fmt::print("Client doesn't exist already (can't close)\n");
@@ -118,7 +121,7 @@ private:
 
 
     
-future<std::string> request(const std::string& method, const std::string& path) 
+future<std::string> request(const std::string& method, const std::string& path, const std::string& body = "") 
 {
     auto host = std::string("localhost");
     uint16_t port = 10000;
@@ -129,7 +132,7 @@ future<std::string> request(const std::string& method, const std::string& path)
             std::string res;
             try {
                 co_await client.connect();
-                res = co_await client.make_request(method, path);
+                res = co_await client.make_request(method, path, body);
                 co_await client.close();
             } catch (const std::exception& e) {
                     fmt::print("Error: {}\n", e.what());
