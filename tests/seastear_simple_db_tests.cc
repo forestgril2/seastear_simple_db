@@ -291,6 +291,10 @@ int main(int argc, char** argv) {
             DbRespTest db_suite{};
             test_result = co_await db_suite.test_GET("", server_hello_message);
         }
+        {//Respond 404 to GET on //inexsting
+            DbRespTest db_suite{};
+            test_result = co_await db_suite.test_GET("inexisting", "404 not found");
+        }
         if(!test_result)
         {//Respond OK to key/val body PUT on /
             DbRespTest db_suite{};
