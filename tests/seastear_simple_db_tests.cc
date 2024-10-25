@@ -217,6 +217,11 @@ struct DbRespTest
         }
         co_return co_await seastar::make_ready_future<>(); 
     }
+    future<void> test_PUT_GET(const std::string& path = "//key0", const std::string& val = "val0")
+    {
+        co_await test_req("PUT", path, val, "OK");
+        co_return co_await test_GET(path, val);
+    }
 
     void init()
     {
@@ -254,10 +259,11 @@ int main(int argc, char** argv) {
         }
         {//Respond OK to key/val body PUT on /, Respond with val, when GET key
             DbRespTest db_suite{};
-            std::string path = "//key0";
-            std::string val = "val0";
-            co_await db_suite.test_req("PUT", path, val, "OK");
-            co_await db_suite.test_GET(path, val);
+            co_await db_suite.test_PUT_GET("//key0", "val0");
+        }
+        {//Respond OK to a different key/val body PUT on /, Respond with val, when GET key
+            DbRespTest db_suite{};
+            co_await db_suite.test_PUT_GET("//key1", "val1");
         }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
