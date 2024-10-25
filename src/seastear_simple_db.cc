@@ -19,6 +19,7 @@
  * Copyright 2015 Cloudius Systems
  */
 
+#include "seastar/core/sharded.hh"
 #include "seastar/http/common.hh"
 #include <seastar/core/app-template.hh>
 #include <seastar/core/reactor.hh>
@@ -45,6 +46,8 @@
 #include <seastar/util/defer.hh>
 #include <seastar/core/signal.hh>
 
+
+extern const std::string server_hello_message;
 
 namespace bpo = boost::program_options;
 
@@ -80,15 +83,24 @@ public:
     }
 };
 
+//seastar::sharded<typename Service>std::map<std::string, std::string> key_vals;
+
 void set_routes(routes& r) {
     function_handler* hello_handler = new function_handler([](const_req req) {
-        return "hello";
+        return server_hello_message;
     });
     function_handler* put_val_handler = new function_handler([](const_req req) {
         const auto key = req.param.get_decoded_param("key");
         if (key.size() > 255){
             throw std::invalid_argument("Key must be a valid UTF-8 string up to 255 bytes.");
         }
+        // This could be dynamic, based on the cache and/or disk size of the shard. 
+        uint64_t key_hash = std::hash<std::string>{}(key);
+        unsigned shard_id = key_hash % seastar::smp::count;
+
+        //return db_server.invoke_on(shard_id, [key](auto& instance) {
+        //    return instance.get(key);
+        //});
         return "OK";
     });
     function_handler* get_val_handler = new function_handler([](const_req req) {

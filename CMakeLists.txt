@@ -57,11 +57,13 @@ seastar_generate_swagger (
   IN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/demo.json
   OUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_library(common_lib STATIC src/common.cc)
+
 add_executable(seastear_simple_db src/seastear_simple_db.cc ${app_httpd_swagger_files})
 #add_dependencies (seastar_simple_db app_httpd_swagger)
 target_include_directories(seastear_simple_db PRIVATE ${SEASTAR_INCLUDE_DIR})
 target_compile_options(seastear_simple_db PRIVATE ${SEASTAR_CFLAGS})
-target_link_libraries(seastear_simple_db ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
+target_link_libraries(seastear_simple_db common_lib  ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
 add_executable(seastear_simple_db_client_tester tests/seastear_simple_db_client_tester.cc)
 target_include_directories(seastear_simple_db_client_tester PRIVATE ${SEASTAR_INCLUDE_DIR})
@@ -72,7 +74,7 @@ add_executable(seastear_simple_db_tests tests/seastear_simple_db_tests.cc)
 find_package(GTest REQUIRED)
 target_include_directories(seastear_simple_db_tests PRIVATE ${SEASTAR_INCLUDE_DIR})
 target_compile_options(seastear_simple_db_tests PRIVATE ${SEASTAR_CFLAGS})
-target_link_libraries(seastear_simple_db_tests GTest::GTest GTest::Main ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
+target_link_libraries(seastear_simple_db_tests common_lib GTest::GTest GTest::Main ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
 enable_testing()
 add_test(NAME seastear_simple_db_tests COMMAND seastear_simple_db_tests)
