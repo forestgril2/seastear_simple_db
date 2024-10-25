@@ -19,8 +19,10 @@
  * Copyright 2015 Cloudius Systems
  */
 
+#include "seastar/core/future.hh"
 #include "seastar/core/sharded.hh"
 #include "seastar/http/common.hh"
+#include <optional>
 #include <seastar/core/app-template.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/shared_ptr.hh>
@@ -45,6 +47,7 @@
 #include <seastar/net/inet_address.hh>
 #include <seastar/util/defer.hh>
 #include <seastar/core/signal.hh>
+#include <unordered_map>
 
 
 extern const std::string server_hello_message;
@@ -83,7 +86,31 @@ public:
     }
 };
 
-//seastar::sharded<typename Service>std::map<std::string, std::string> key_vals;
+struct Store 
+{
+   seastar::future<> stop() 
+   {
+        return make_ready_future<>();
+    } 
+
+   future<bool> put(std::string&& key, std::string&& val)
+   {
+        key_vals.insert_or_assign(std::move(key), std::move(val));
+        co_return co_await make_ready_future<bool>(true);
+    }
+
+   future<std::optional<std::string>> get(const std::string& key)
+   {
+        auto it = key_vals.find(key);
+        if (it==key_vals.end())
+            co_return co_await make_ready_future<std::optional<std::string>>(std::nullopt);
+        co_return co_await make_ready_future<std::optional<std::string>>(it->second);
+    };
+
+    std::unordered_map<std::string, std::string> key_vals;
+};
+
+
 
 void set_routes(routes& r) {
     function_handler* hello_handler = new function_handler([](const_req req) {
