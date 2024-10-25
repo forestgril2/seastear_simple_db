@@ -87,10 +87,14 @@ void set_routes(routes& r) {
     function_handler* put_val_handler = new function_handler([](const_req req) {
         return "OK";
     });
+    function_handler* get_val_handler = new function_handler([](const_req req) {
+        return "val0";
+    });
     r.add(operation_type::GET, url("/"), hello_handler);
     r.add(operation_type::GET, url("/file").remainder("path"),
             new directory_handler("/"));
     r.add(operation_type::PUT, url("/"), put_val_handler);
+    r.add(operation_type::GET, url("/").remainder("key"), get_val_handler);
 }
 
 int main(int ac, char** av) {

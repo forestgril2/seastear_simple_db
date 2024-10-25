@@ -157,19 +157,17 @@ struct DbRespTest
 {
     DbRespTest()
     {
-        std::cout << " ##############################" << std::endl;
-        std::cout << " ### Starting DB test suite ###" << std::endl;
-        std::cout << " ##############################" << std::endl;
+        std::cout << " ### Starting a DB test suite ###" << std::endl;
+        init();
     }
 
     ~DbRespTest() 
     {
+        finalize();
         std::cout << " ### FINISHED DB test suite " << std::endl;
         if (!failed_cases.empty())
         {
-            std::cout << " ###########################################" << std::endl;
-            std::cout << " ### FAILURE! Failed cases listed below. ###" << std::endl;
-            std::cout << " ###########################################" << std::endl;
+            std::cout << " ### Suite FAILURE! Failed cases listed below. ###" << std::endl;
             for (auto fc : failed_cases)
             {
                 std::cout << "     " << fc << std::endl;
@@ -177,23 +175,13 @@ struct DbRespTest
         }
         else
         {
-            std::cout << " ##################################" << std::endl;
-            std::cout << " ### SUCCESS. ALL TESTS PASSED! ###" << std::endl;
-            std::cout << " ##################################" << std::endl;
+            std::cout << " ### SUCCESS. Suite tests passed ###" << std::endl;
         }
     }
 
     future<void> GET(std::string&& path, std::string&& res_expect)
     {
-        co_return co_await req_once("GET", std::move(path), "",std::move(res_expect));
-    }
-
-    future<void> req_once(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
-    {
-        initBatch();
-        co_await req(std::move(method), std::move(path), std::move(body), std::move(res_expect));
-        finalizeBatch();
-        co_return co_await seastar::make_ready_future<>(); 
+        co_return co_await req("GET", std::move(path), "",std::move(res_expect));
     }
 
     future<void> req(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
@@ -209,12 +197,12 @@ struct DbRespTest
         co_return co_await seastar::make_ready_future<>(); 
     }
 
-    void initBatch()
+    void init()
     {
         pid = execute_binary(k_ssdb_file_name);
         sleep(k_secs_required_to_start);
     }
-    void finalizeBatch()
+    void finalize()
     {
         const auto killed = kill_binary(pid);
     }
@@ -231,9 +219,23 @@ int main(int argc, char** argv) {
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
         const int test_result = RUN_ALL_TESTS();
 
-        DbRespTest db_suite{};
-        co_await db_suite.GET("/", "hello");
-        co_await db_suite.req_once("PUT", "/", "{\"key0\":\"val0\"}", "OK");
+        std::cout << " ###################################" << std::endl;
+        std::cout << " ### Starting all DB test suites ###" << std::endl;
+        std::cout << " ###################################" << std::endl;
+
+        {//Respond hello to GET on /
+            DbRespTest db_suite{};
+            co_await db_suite.GET("/", "hello");
+        }
+        {//Respond OK to key/val body PUT on /
+            DbRespTest db_suite{};
+            co_await db_suite.req("PUT", "/", "{\"key0\":\"val0\"}", "OK");
+        }
+        {//Respond OK to key/val body PUT on /, Respond with val, when GET key
+            DbRespTest db_suite{};
+            co_await db_suite.req("PUT", "/", "{\"key0\":\"val0\"}", "OK");
+            co_await db_suite.GET("/key0", "val0");
+        }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });

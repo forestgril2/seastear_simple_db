@@ -85,7 +85,7 @@ public:
             auto req = http::request::make(method, _host, path);
             req.write_body("json",body);
             co_await _client->make_request(std::move(req), [&result, this](const http::reply& rep, input_stream<char>&& in) -> future<> {
-            fmt::print("Reply status: {}\n", rep._status);
+            //fmt::print("Reply status: {}\n", rep._status);
             try {
                     StreamConsumer consumer;
                     co_await in.consume(consumer);
