@@ -85,6 +85,10 @@ void set_routes(routes& r) {
         return "hello";
     });
     function_handler* put_val_handler = new function_handler([](const_req req) {
+        const auto key = req.param.get_decoded_param("key");
+        if (key.size() > 255){
+            throw std::invalid_argument("Key must be a valid UTF-8 string up to 255 bytes.");
+        }
         return "OK";
     });
     function_handler* get_val_handler = new function_handler([](const_req req) {
@@ -95,7 +99,7 @@ void set_routes(routes& r) {
     r.add(operation_type::GET, url("/"), hello_handler);
     r.add(operation_type::GET, url("/file").remainder("path"),
             new directory_handler("/"));
-    r.add(operation_type::PUT, url("/"), put_val_handler);
+    r.add(operation_type::PUT, url("/").remainder("key"), put_val_handler);
     r.add(operation_type::GET, url("/").remainder("key"), get_val_handler);
 }
 

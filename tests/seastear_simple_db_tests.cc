@@ -179,12 +179,33 @@ struct DbRespTest
         }
     }
 
-    future<void> GET(std::string&& path, std::string&& res_expect)
+    future<void> test_GET(std::string&& path, std::string&& res_expect)
     {
-        co_return co_await req("GET", std::move(path), "",std::move(res_expect));
+        co_return co_await test_req("GET", std::move(path), "",std::move(res_expect));
     }
 
-    future<void> req(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
+    future<void> test_GET(const std::string& path, const std::string& res_expect)
+    {
+        co_return co_await test_req("GET", std::move(path), "",std::move(res_expect));
+    }
+
+    future<void> test_req(std::string&& method, std::string&& path, std::string&& body, std::string&& res_expect)
+    {
+        const auto response =  co_await request(method, path);
+        if (response != std::format("\"{}\"", res_expect))
+        {
+            failed_cases.emplace_back(
+                std::format("FAIL: Method {} at path {} expected \"{}\" while the response was: {}.", 
+                std::move(method), std::move(path), std::move(res_expect), std::move(response)
+            ));
+        }
+        co_return co_await seastar::make_ready_future<>(); 
+    }
+
+    future<void> test_req(const std::string& method, 
+                          const std::string& path, 
+                          const std::string& body, 
+                          const std::string& res_expect)
     {
         const auto response =  co_await request(method, path);
         if (response != std::format("\"{}\"", res_expect))
@@ -225,16 +246,18 @@ int main(int argc, char** argv) {
 
         {//Respond hello to GET on /
             DbRespTest db_suite{};
-            co_await db_suite.GET("/", "hello");
+            co_await db_suite.test_GET("/", "hello");
         }
         {//Respond OK to key/val body PUT on /
             DbRespTest db_suite{};
-            co_await db_suite.req("PUT", "/", "{\"key0\":\"val0\"}", "OK");
+            co_await db_suite.test_req("PUT", "//key0", "val0", "OK");
         }
         {//Respond OK to key/val body PUT on /, Respond with val, when GET key
             DbRespTest db_suite{};
-            co_await db_suite.req("PUT", "/", "{\"key0\":\"val0\"}", "OK");
-            co_await db_suite.GET("//key0", "val0");
+            std::string path = "//key0";
+            std::string val = "val0";
+            co_await db_suite.test_req("PUT", path, val, "OK");
+            co_await db_suite.test_GET(path, val);
         }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
