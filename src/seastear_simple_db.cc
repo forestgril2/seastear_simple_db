@@ -20,6 +20,7 @@
  */
 
 #include "seastar/core/future.hh"
+#include "seastar/core/io_queue.hh"
 #include "seastar/core/sharded.hh"
 #include "seastar/http/common.hh"
 #include <optional>
@@ -110,51 +111,20 @@ struct Store
     std::unordered_map<std::string, std::string> key_vals;
 };
 
-
-
-void set_routes(routes& r) {
-    function_handler* hello_handler = new function_handler([](const_req req) {
-        return server_hello_message;
-    });
-    function_handler* put_val_handler = new function_handler([](const_req req) {
-        const auto key = req.param.get_decoded_param("key");
-        if (key.size() > 255){
-            throw std::invalid_argument("Key must be a valid UTF-8 string up to 255 bytes.");
-        }
-        // This could be dynamic, based on the cache and/or disk size of the shard. 
-        uint64_t key_hash = std::hash<std::string>{}(key);
-        unsigned shard_id = key_hash % seastar::smp::count;
-
-        //return db_server.invoke_on(shard_id, [key](auto& instance) {
-        //    return instance.get(key);
-        //});
-        return "OK";
-    });
-    function_handler* get_val_handler = new function_handler([](const_req req) {
-        const auto key = req.param.get_decoded_param("key");
-        const std::string val = "val0";
-        return val;
-    });
-    r.add(operation_type::GET, url("/"), hello_handler);
-    r.add(operation_type::GET, url("/file").remainder("path"),
-            new directory_handler("/"));
-    r.add(operation_type::PUT, url("/").remainder("key"), put_val_handler);
-    r.add(operation_type::GET, url("/").remainder("key"), get_val_handler);
-}
-
 int main(int ac, char** av) {
     app_template app;
-
+    sharded<Store> db;
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "HTTP Server port");
 
-    return app.run(ac, av, [&] {
-        return seastar::async([&] {
+    return app.run(ac, av, [&] ()->seastar::future<int> {
             stop_signal stop_signal;
             auto&& config = app.configuration();
 
+            sharded<Store> db;
+            co_await db.start();
+
             uint16_t port = config["port"].as<uint16_t>();
             auto server = std::make_unique<http_server_control>();
-            auto rb = make_shared<api_registry_builder>("apps/httpd/");
             server->start().get();
 
             auto stop_server = defer([&] () noexcept {
@@ -162,15 +132,47 @@ int main(int ac, char** av) {
                 server->stop().get();
             });
 
-            server->set_routes(set_routes).get();
-            server->set_routes([rb](routes& r){rb->set_api_doc(r);}).get();
-            server->set_routes([rb](routes& r) {rb->register_function(r, "demo", "hello world application");}).get();
-            server->listen(port).get();
+            co_await server->set_routes([&db](routes& r) {
+                function_handler* hello_handler = new function_handler([](const_req req) {
+                    return server_hello_message;
+                });
+
+                function_handler* put_val_handler = new function_handler([&db](const_req req) -> std::string {
+                    const auto key = req.param.get_decoded_param("key");
+                    if (key.size() > 255){
+                        throw std::invalid_argument("Key must be a valid UTF-8 string up to 255 bytes.");
+                    }
+                    // This could be dynamic, based on the cache and/or disk size of the shard. 
+                    uint64_t key_hash = std::hash<std::string>{}(key);
+                    unsigned shard_id = key_hash % seastar::smp::count;
+
+                    return std::string("OK");
+                });
+                
+                function_handler* get_val_handler = new function_handler([&db](const_req req) -> std::string {
+                    const auto key = req.param.get_decoded_param("key");
+                    // This could be dynamic, based on the cache and/or disk size of the shard. 
+                    uint64_t key_hash = std::hash<std::string>{}(key);
+                    unsigned shard_id = key_hash % seastar::smp::count;
+
+                    std::optional<std::string> resp = db.invoke_on(shard_id, [key](auto& instance) -> future<std::optional<std::string>>{
+                        co_return co_await instance.get(key);
+                    }).get();
+                    //TODO: fix that in case not found. Probably possible to change the reply to something that is not directly a string.
+                    return resp.value_or("404 not found");
+                });
+
+                r.add(operation_type::GET, url("/"), hello_handler);
+                r.add(operation_type::GET, url("/").remainder("key"), get_val_handler);
+                r.add(operation_type::PUT, url("/").remainder("key"), put_val_handler);
+            });
+
+            co_await server->listen(port);
 
             std::cout << "Seastar HTTP server listening on port " << port << " ...\n";
 
-            stop_signal.wait().get();
-            return 0;
-        });
+            co_await stop_signal.wait();
+            co_await db.stop();
+            co_return co_await make_ready_future<int>(0);
     });
 }
