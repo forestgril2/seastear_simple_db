@@ -20,16 +20,34 @@
 #include <seastar/net/inet_address.hh>
 #include <seastar/net/dns.hh>
 #include <seastar/net/tls.hh>
+#include <thread>
 
 #include "ClientTester.hh"
 #include "seastar/core/future.hh"
 
+#include <sched.h>
+#include <thread>
+#include <iostream>
+
+void set_cpu_affinity() {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    
+    for (int i = 0; i < std::thread::hardware_concurrency(); i++) {
+        CPU_SET(i, &set);
+    }
+
+    if (sched_setaffinity(0, sizeof(set), &set) == -1) {
+        perror("sched_setaffinity");
+    }
+}
+
 extern const std::string server_hello_message;
 
-const std::string k_ssdb_file_name = "seastear_simple_db";
-const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
-const unsigned k_secs_required_to_start = 1;
-const unsigned k_secs_required_to_terminate = 1;
+const std::string k_ssdb_file_name = "./seastear_simple_db";
+const std::string k_ssdbct_file_name = "./seastear_simple_db_client_tester";
+const unsigned k_secs_required_to_start = 4;
+const unsigned k_secs_required_to_terminate = 4;
 
 // Function to check if a file exists and is executable
 bool is_executable(const std::string& file) {
@@ -37,20 +55,36 @@ bool is_executable(const std::string& file) {
     return (stat(file.c_str(), &buffer) == 0) && (buffer.st_mode & S_IXUSR);
 }
 
-pid_t execute_binary(const std::string& binaryPath) {
+pid_t execute_binary(const std::string& binaryPath, const std::vector<std::string>& args = {}) {
     pid_t pid = fork();
+
+    set_cpu_affinity();
 
     if (pid == -1) {
         // Fork failed
         perror("fork");
         exit(EXIT_FAILURE);
     } else if (pid == 0) {
- // Child process
-        execl(binaryPath.c_str(), binaryPath.c_str(), nullptr);
-        // If execl fails, exit with error
-        perror("execl");
+        // Child process
+        // Build argument list
+        std::vector<char*> exec_args;
+        std::cout << " ### binary pathd is: " << binaryPath.c_str() << std::endl;
+        exec_args.push_back(const_cast<char*>(binaryPath.c_str()));  // First argument is the binary path
+        for (const auto& arg : args)
+        {
+            std::cout << " ### pushing to args: " << arg.c_str() << std::endl;
+            exec_args.push_back(const_cast<char*>(arg.c_str()));
+        }
+        exec_args.push_back(nullptr);  // The last argument must be a nullptr
+
+        execvp(binaryPath.c_str(), exec_args.data());
+
+        // If execvp fails, exit with error
+        perror("execvp");
         exit(EXIT_FAILURE);
-    } 
+    }
+
+    sleep(k_secs_required_to_start);
     // Parent process
     return pid;
 }
@@ -107,7 +141,7 @@ TEST(SeastearSimpleDbTests, ClientTesterBinaryExists)
 }
 
 TEST(SeastearSimpleDbTests, ServerCanBeExecuted) {
-   const auto pid = execute_binary(k_ssdb_file_name);
+   const auto pid = execute_binary(k_ssdb_file_name, {"--smp",{"12"}});
    ASSERT_NE(pid, -1);
    const auto killed = kill_binary(pid);
    ASSERT_EQ(killed, true);
@@ -214,6 +248,15 @@ struct DbRespTest
             response, std::move(method), std::move(path), std::move(body), std::move(res_expect)
         )); 
     }
+    future<bool> test_DELETE(std::string&& key, std::string&& res_expect)
+    {
+        co_return co_await test_req("DELETE", std::string("//") + std::move(key), "",std::move(res_expect));
+    }
+
+    future<bool> test_DELETE(const std::string& key, const std::string& res_expect)
+    {
+        co_return co_await test_req("DELETE", std::string("//") + key, "", res_expect);
+    }
 
     future<bool> test_req(const std::string& method, 
                           const std::string& path, 
@@ -235,7 +278,6 @@ struct DbRespTest
     void init()
     {
         pid = execute_binary(k_ssdb_file_name);
-        sleep(k_secs_required_to_start);
     }
     void finalize()
     {
@@ -290,6 +332,7 @@ int main(int argc, char** argv) {
 
         std::cout << " ###################################" << std::endl;
         std::cout << " ### Starting all DB test suites ###" << std::endl;
+        std::cout << " ### Available cores: " << std::thread::hardware_concurrency() << std::endl;
         std::cout << " ###################################" << std::endl;
 
         if(!test_result)
@@ -326,6 +369,12 @@ int main(int argc, char** argv) {
             DbRespTest db_suite{};
             test_result = co_await db_suite.test_PUT_GET("key1", "val1");
             test_result = co_await db_suite.test_PUT_GET("key2", "val1");
+        }
+        {// Can DELETE a key
+            DbRespTest db_suite{};
+            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+            test_result = co_await db_suite.test_DELETE("key1", "OK");
+            test_result = co_await db_suite.test_GET("key1", "404 not found");
         }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
