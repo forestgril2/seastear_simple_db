@@ -29,6 +29,7 @@ extern const std::string server_hello_message;
 const std::string k_ssdb_file_name = "seastear_simple_db";
 const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
 const unsigned k_secs_required_to_start = 1;
+const unsigned k_secs_required_to_terminate = 1;
 
 // Function to check if a file exists and is executable
 bool is_executable(const std::string& file) {
@@ -238,6 +239,7 @@ struct DbRespTest
     void finalize()
     {
         const auto killed = kill_binary(pid);
+        sleep(k_secs_required_to_terminate);
     }
 
 private:
@@ -319,6 +321,11 @@ int main(int argc, char** argv) {
             DbRespTest db_suite{};
             test_result = co_await db_suite.test_PUT_GET("key1", "val1");
             test_result = co_await db_suite.test_PUT_GET("key1", "val2");
+        }
+        {// Can put same values under different keys.
+            DbRespTest db_suite{};
+            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+            test_result = co_await db_suite.test_PUT_GET("key2", "val1");
         }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
