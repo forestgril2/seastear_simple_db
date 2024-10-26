@@ -189,22 +189,20 @@ int main(int ac, char** av) {
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "http server port");
 
     return app.run(ac, av, [&] ()->seastar::future<int> {
-
-        stop_signal stop_signal;
+        // Configuration
         auto&& config = app.configuration();
-
-        co_await db.start();
-
         uint16_t port = config["port"].as<uint16_t>();
+
+        // Initialization
+        co_await db.start();
         http_server_control server;
         co_await server.start();
-
         co_await configure_server_routes(server);
-
         co_await server.listen(port);
-
         std::cout << "Seastar HTTP server listening on port " << port << " ...\n";
 
+        // Termination
+        stop_signal stop_signal;
         co_await stop_signal.wait();
         std::cout << "Stoppping HTTP server" << std::endl;
         co_await server.stop();
