@@ -62,6 +62,7 @@ bool kill_binary(pid_t pid) {
             perror("kill");
             return false;
         }
+        sleep(k_secs_required_to_terminate);
         int status;
         // Wait for the specific child process to terminate
         if (waitpid(pid, &status, 0) == -1) {
@@ -239,7 +240,6 @@ struct DbRespTest
     void finalize()
     {
         const auto killed = kill_binary(pid);
-        sleep(k_secs_required_to_terminate);
     }
 
 private:
