@@ -59,11 +59,11 @@ seastar_generate_swagger (
 
 add_library(common_lib STATIC src/common.cc)
 
-add_executable(seastear_simple_db src/seastear_simple_db.cc ${app_httpd_swagger_files})
+add_executable(seastear_simple_db_server src/seastear_simple_db.cc ${app_httpd_swagger_files})
 #add_dependencies (seastar_simple_db app_httpd_swagger)
-target_include_directories(seastear_simple_db PRIVATE ${SEASTAR_INCLUDE_DIR})
-target_compile_options(seastear_simple_db PRIVATE ${SEASTAR_CFLAGS})
-target_link_libraries(seastear_simple_db common_lib  ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
+target_include_directories(seastear_simple_db_server PRIVATE ${SEASTAR_INCLUDE_DIR})
+target_compile_options(seastear_simple_db_server PRIVATE ${SEASTAR_CFLAGS})
+target_link_libraries(seastear_simple_db_server common_lib  ${SEASTAR_LIB} ${SEASTAR_LDFLAGS} ${SEASTAR_LIBS_PRIVATE_LIST})
 
 add_executable(seastear_simple_db_client_tester tests/seastear_simple_db_client_tester.cc)
 target_include_directories(seastear_simple_db_client_tester PRIVATE ${SEASTAR_INCLUDE_DIR})

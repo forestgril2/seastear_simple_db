@@ -29,7 +29,51 @@
 #include <thread>
 #include <iostream>
 
-void set_cpu_affinity() {
+#include <iostream>
+#include <string>
+#include <array>
+#include <cstdio>
+#include <sstream>
+#include <signal.h>
+#include <unistd.h>
+
+std::string get_process_info(const std::string& binaryName) 
+{
+    std::array<char, 128> buffer;
+    std::string result;
+
+    std::string command = "ps -aux | grep " + binaryName + " | grep -v grep";
+    
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        std::cout << " ### popen() failed!" << std::endl;
+        return "";
+    }
+
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        result += buffer.data();
+    }
+
+    pclose(pipe);
+    std::cout << " ### Process info: " << result << std::endl;
+    return result;
+}
+
+pid_t extract_pid(const std::string& processInfo) 
+{
+    std::istringstream stream(processInfo);
+    std::string token;
+    pid_t pid = -1;
+
+    // The second column in the ps output is the PID
+    stream >> token;  // Skip the first column (USER)
+    stream >> pid;    // Get the second column (PID)
+
+    return pid;
+}
+
+void set_cpu_affinity() 
+{
     cpu_set_t set;
     CPU_ZERO(&set);
     
@@ -44,90 +88,53 @@ void set_cpu_affinity() {
 
 extern const std::string server_hello_message;
 
-const std::string k_ssdb_file_name = "./seastear_simple_db";
-const std::string k_ssdbct_file_name = "./seastear_simple_db_client_tester";
-const unsigned k_secs_required_to_start = 4;
-const unsigned k_secs_required_to_terminate = 4;
+const std::string k_ssdb_file_name = "seastear_simple_db_server";
+const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
+const unsigned k_secs_required_to_start = 2;
+const unsigned k_secs_required_to_terminate = 2;
 
 // Function to check if a file exists and is executable
-bool is_executable(const std::string& file) {
+bool is_executable(const std::string& file) 
+{
     struct stat buffer;
     return (stat(file.c_str(), &buffer) == 0) && (buffer.st_mode & S_IXUSR);
 }
 
-pid_t execute_binary(const std::string& binaryPath, const std::vector<std::string>& args = {}) {
-    pid_t pid = fork();
-
-    set_cpu_affinity();
-
-    if (pid == -1) {
-        // Fork failed
-        perror("fork");
-        exit(EXIT_FAILURE);
-    } else if (pid == 0) {
-        // Child process
-        // Build argument list
-        std::vector<char*> exec_args;
-        std::cout << " ### binary pathd is: " << binaryPath.c_str() << std::endl;
-        exec_args.push_back(const_cast<char*>(binaryPath.c_str()));  // First argument is the binary path
-        for (const auto& arg : args)
-        {
-            std::cout << " ### pushing to args: " << arg.c_str() << std::endl;
-            exec_args.push_back(const_cast<char*>(arg.c_str()));
-        }
-        exec_args.push_back(nullptr);  // The last argument must be a nullptr
-
-        execvp(binaryPath.c_str(), exec_args.data());
-
-        // If execvp fails, exit with error
-        perror("execvp");
-        exit(EXIT_FAILURE);
+int execute_binary(const std::string& binaryPath, const std::vector<std::string>& args = {})
+{
+    std::string binary_with_exec_prefix = "./";
+    binary_with_exec_prefix += binaryPath + " &";
+    int ret = std::system(binary_with_exec_prefix.c_str());
+    if (ret == -1) {
+        std::cout << "Error executing the binary." << std::endl;
+        return -1;
     }
 
+    std::cout << " ### Executing the binary." << std::endl;
     sleep(k_secs_required_to_start);
-    // Parent process
-    return pid;
+    return ret;
 }
 
-bool kill_binary(pid_t pid) {
-    if (pid > 0) {
-        // Send SIGKILL to the specific process
-        if (kill(pid, SIGTERM) == -1) {
-            perror("kill");
-            return false;
-        }
-        sleep(k_secs_required_to_terminate);
-        int status;
-        // Wait for the specific child process to terminate
-        if (waitpid(pid, &status, 0) == -1) {
-            perror("waitpid");
-            return false;
-        }
-        if (WIFEXITED(status)) {
-            std::cout << "Process terminated by signal: " << WEXITSTATUS(status) << std::endl;
-            return true;
-        } else if (WIFSIGNALED(status)) {
-            std::cout << "Process terminated by signal: " << WTERMSIG(status) << std::endl;
-            return true;
-        } else {
-            std::cout << "Process did not terminate as expected." << std::endl;
-            return false;
-        }
-    }
-    return false;
-}
-
-bool is_process_alive(pid_t pid) {
-    if (kill(pid, 0) == 0) {
-        return true;  // Process exists
-    } else {
-        if (errno == ESRCH) {
-            return false;  // Process does not exist
-        } else if (errno == EPERM) {
-            return true;   // Process exists, but no permission to signal
-        }
+bool kill_binary(pid_t pid) 
+{
+    if (kill(pid, SIGTERM) == -1) 
+    {
+        perror("kill");
         return false;
     }
+    return true;
+}
+
+bool is_process_alive(const std::string& binary_name)
+{
+    const auto info = get_process_info(binary_name);
+    if (info.empty()) 
+    {
+        std::cout << " ### Process not found!" << std::endl;
+        return false;
+    }
+    std::cout << " ### Process is alive." << std::endl;
+    return true;
 }
 
 TEST(SeastearSimpleDbTests, ServerBinaryExists)
@@ -141,17 +148,20 @@ TEST(SeastearSimpleDbTests, ClientTesterBinaryExists)
 }
 
 TEST(SeastearSimpleDbTests, ServerCanBeExecuted) {
-   const auto pid = execute_binary(k_ssdb_file_name, {"--smp",{"12"}});
-   ASSERT_NE(pid, -1);
+   const auto result = execute_binary(k_ssdb_file_name, {"--smp",{"12"}});
+   ASSERT_NE(result, -1);
+   ASSERT_TRUE(is_process_alive(k_ssdb_file_name)) << "Server binary is not alive";
+   const auto pid = extract_pid(get_process_info(k_ssdb_file_name));
    const auto killed = kill_binary(pid);
    ASSERT_EQ(killed, true);
 }
 
 TEST(SeastearSimpleDbTests, ServerStaysAliveBeforeTestExits) {
-   const auto pid = execute_binary(k_ssdb_file_name);
-   ASSERT_NE(pid, -1);
+   const auto result = execute_binary(k_ssdb_file_name);
+   ASSERT_NE(result, -1);
    sleep(5);
-   ASSERT_TRUE(is_process_alive(pid)) << "Server binary is not alive";
+   ASSERT_TRUE(is_process_alive(k_ssdb_file_name)) << "Server binary is not alive";
+   const auto pid = extract_pid(get_process_info(k_ssdb_file_name));
    const auto killed = kill_binary(pid);
    ASSERT_EQ(killed, true);
 }
@@ -277,11 +287,21 @@ struct DbRespTest
 
     void init()
     {
-        pid = execute_binary(k_ssdb_file_name);
+        execute_binary(k_ssdb_file_name);
+        if (!is_process_alive(k_ssdb_file_name))
+        {
+            throw("ERROR: Could not start the db in the test suite!");
+        }
     }
+
     void finalize()
     {
+        const auto pid = extract_pid(get_process_info(k_ssdb_file_name));
         const auto killed = kill_binary(pid);
+        if (!kill_binary(pid))
+        {
+            throw("ERROR: Could not terminate the db in the test suite!");
+        }
     }
 
 private:
@@ -318,17 +338,20 @@ private:
         return failed_cases.size();
     }
 
-    pid_t pid;
     std::vector<std::string> failed_cases;
 };
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) 
+{
     ::testing::InitGoogleTest(&argc, argv);
 
     seastar::app_template app;
 
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
+        set_cpu_affinity();
         bool test_result = RUN_ALL_TESTS();
+
+        co_return co_await seastar::make_ready_future<int>(test_result);
 
         std::cout << " ###################################" << std::endl;
         std::cout << " ### Starting all DB test suites ###" << std::endl;
