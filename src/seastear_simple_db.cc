@@ -138,7 +138,9 @@ int main(int ac, char** av) {
                 });
 
                 function_handler* put_val_handler = new function_handler([&db](const_req req) -> std::string {
-                    const auto key = req.param.get_decoded_param("key");
+                    auto key = req.param.get_decoded_param("key");
+                    //TODO: server-side deprecated: use content_stream instead
+                    auto body = req.content; 
                     if (key.size() > 255){
                         throw std::invalid_argument("Key must be a valid UTF-8 string up to 255 bytes.");
                     }
@@ -146,6 +148,10 @@ int main(int ac, char** av) {
                     uint64_t key_hash = std::hash<std::string>{}(key);
                     unsigned shard_id = key_hash % seastar::smp::count;
 
+                    bool resp = db.invoke_on(shard_id, 
+                    [key=std::move(key), body=std::move(body)](auto& instance) -> future<bool>{
+                        co_return co_await instance.put(key, body);
+                    }).get();
                     return std::string("OK");
                 });
                 
