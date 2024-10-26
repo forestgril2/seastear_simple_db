@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <exception>
 #include <format>
 #include <gtest/gtest.h>
@@ -56,7 +57,7 @@ pid_t execute_binary(const std::string& binaryPath) {
 bool kill_binary(pid_t pid) {
     if (pid > 0) {
         // Send SIGKILL to the specific process
-        if (kill(pid, SIGKILL) == -1) {
+        if (kill(pid, SIGTERM) == -1) {
             perror("kill");
             return false;
         }
@@ -66,7 +67,10 @@ bool kill_binary(pid_t pid) {
             perror("waitpid");
             return false;
         }
-        if (WIFSIGNALED(status)) {
+        if (WIFEXITED(status)) {
+            std::cout << "Process terminated by signal: " << WEXITSTATUS(status) << std::endl;
+            return true;
+        } else if (WIFSIGNALED(status)) {
             std::cout << "Process terminated by signal: " << WTERMSIG(status) << std::endl;
             return true;
         } else {
