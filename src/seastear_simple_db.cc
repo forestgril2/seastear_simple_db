@@ -108,10 +108,10 @@ struct Store
 
     seastar::future<> stop() 
     {
-        std::cout << " === Destroying Store on shard_id " << seastar::this_shard_id() << (key_vals.empty() ? "(empty)." : ", dumping store:") << std::endl;
+        std::cerr << " === Destroying Store on shard_id " << seastar::this_shard_id() << (key_vals.empty() ? "(empty)." : ", dumping store:") << std::endl;
         for (const auto& [key, val] : key_vals)
         {
-            std::cout << std::format("{{{} : {}}}", key, val) <<  std::endl;
+            std::cerr << std::format("{{{} : {}}}", key, val) <<  std::endl;
         }
         return make_ready_future<>();
     } 
@@ -199,11 +199,6 @@ int main(int ac, char** av) {
         http_server_control server;
         co_await server.start();
 
-        auto stop_server = defer([&] () noexcept {
-            std::cout << "Stoppping HTTP server" << std::endl; // This can throw, but won't, they say.
-            server.stop().get();
-        });
-
         co_await configure_server_routes(server);
 
         co_await server.listen(port);
@@ -211,6 +206,8 @@ int main(int ac, char** av) {
         std::cout << "Seastar HTTP server listening on port " << port << " ...\n";
 
         co_await stop_signal.wait();
+        std::cout << "Stoppping HTTP server" << std::endl;
+        co_await server.stop();
         co_await db.stop();
         co_return co_await make_ready_future<int>(0);
     });
