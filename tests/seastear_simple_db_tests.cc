@@ -310,6 +310,12 @@ int main(int argc, char** argv) {
             DbRespTest db_suite{};
             test_result = co_await db_suite.test_PUT_GET("key1", "val1");
         }
+        if(!test_result)
+        {// Can change the value for a key.
+            DbRespTest db_suite{};
+            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+            test_result = co_await db_suite.test_PUT_GET("key1", "val2");
+        }
 
         co_return co_await seastar::make_ready_future<int>(test_result);
     });

@@ -1,5 +1,4 @@
 #include "seastar/core/temporary_buffer.hh"
-#include <cstddef>
 #include <string>
 
 #include <seastar/coroutine/maybe_yield.hh>
