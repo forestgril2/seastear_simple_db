@@ -117,8 +117,6 @@ private:
     uint16_t _port;
     std::unique_ptr<http::experimental::client> _client;
 };
-
-
     
 future<std::string> request(const std::string& method, const std::string& path, const std::string& body = "") 
 {
@@ -140,38 +138,3 @@ future<std::string> request(const std::string& method, const std::string& path, 
         }));
     });
 };
-
-// A LEGIT CLIENT CLOSE:
-//
-// INFO  2024-10-21 12:15:27,070 seastar - Reactor backend: io_uring
-// INFO  2024-10-21 12:15:27,087 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// StreamConsumer constructor
-// StreamConsumer MOVE constructor
-// StreamConsumer buffer is not empty, will print the reply now:
-// "hello"
-// StreamConsumer buffer is empty, stop consuming return
-// StreamConsumer destructor
-// Closing reply input stream
-// StreamConsumer destructor
-// Closing client
-// ClientTester DESTRUCTOR
-// [1] + Done                       "/usr/bin/gdb" --interpreter=mi --tty=${DbgTerm} 0<"/tmp/Microsoft-MIEngine-In-cufvinrr.5kc" 1>"/tmp/Microsoft-MIEngine-Out-jvw5nsya.ihm"
-// vboxuser@Ubuntu24:~/
-// 
-// FAILING WIHT A SEGFAULT in seastar::data_source::get()
-//
-// INFO  2024-10-21 12:17:19,803 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// StreamConsumer constructor
-// StreamConsumer MOVE constructor
-// StreamConsumer buffer is not empty, will print the reply now:
-// "hello"
-// StreamConsumer MOVE constructor
-// StreamConsumer destructor
-// StreamConsumer destructor
-// SEGFAULT in seastar::data_source::get()
