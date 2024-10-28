@@ -119,59 +119,27 @@ private:
 };
 
 
-    
-future<std::string> request(const std::string& method, const std::string& path, const std::string& body = "") 
-{
-    auto host = std::string("localhost");
-    uint16_t port = 10000;
+future<std::string> request(const std::string& method, const std::string& path, const std::string& body = "") {
+    return seastar::async([=]() -> std::string {
+        // Prepare the curl command
+        std::string cmd = "curl -X " + method + " localhost:10000" + path;
+        
+        // If body exists, append it as data for POST requests
+        if (!body.empty()) {
+            cmd += " -d '" + body + "'";
+        }
 
-    return seastar::do_with(ClientTester(host, port), [&] (ClientTester& client) -> future<std::string> {
-        co_return co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<std::string> {
-            co_await seastar::coroutine::maybe_yield();
-            std::string res;
-            try {
-                co_await client.connect();
-                res = co_await client.make_request(method, path, body);
-                co_await client.close();
-            } catch (const std::exception& e) {
-                    fmt::print("Error: {}\n", e.what());
-            }
-            co_return res;
-        }));
+        // Capture the output of the curl command
+        std::array<char, 128> buffer;
+        std::string result;
+        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+        if (!pipe) {
+            throw std::runtime_error("popen() failed!");
+        }
+        while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+            result += buffer.data();
+        }
+
+        return result;
     });
-};
-
-// A LEGIT CLIENT CLOSE:
-//
-// INFO  2024-10-21 12:15:27,070 seastar - Reactor backend: io_uring
-// INFO  2024-10-21 12:15:27,087 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// StreamConsumer constructor
-// StreamConsumer MOVE constructor
-// StreamConsumer buffer is not empty, will print the reply now:
-// "hello"
-// StreamConsumer buffer is empty, stop consuming return
-// StreamConsumer destructor
-// Closing reply input stream
-// StreamConsumer destructor
-// Closing client
-// ClientTester DESTRUCTOR
-// [1] + Done                       "/usr/bin/gdb" --interpreter=mi --tty=${DbgTerm} 0<"/tmp/Microsoft-MIEngine-In-cufvinrr.5kc" 1>"/tmp/Microsoft-MIEngine-Out-jvw5nsya.ihm"
-// vboxuser@Ubuntu24:~/
-// 
-// FAILING WIHT A SEGFAULT in seastar::data_source::get()
-//
-// INFO  2024-10-21 12:17:19,803 seastar - Perf-based stall detector creation failed (EACCESS), try setting /proc/sys/kernel/perf_event_paranoid to 1 or less to enable kernel backtraces: falling back to posix timer.
-// ClientTester MOVE constructor
-// ClientTester DESTRUCTOR
-// Reply status: 200 OK
-// StreamConsumer constructor
-// StreamConsumer MOVE constructor
-// StreamConsumer buffer is not empty, will print the reply now:
-// "hello"
-// StreamConsumer MOVE constructor
-// StreamConsumer destructor
-// StreamConsumer destructor
-// SEGFAULT in seastar::data_source::get()
+}

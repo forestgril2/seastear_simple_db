@@ -45,6 +45,7 @@
 #include <seastar/http/file_handler.hh>
 #include <seastar/core/seastar.hh>
 #include "demo.json.hh"
+#include "seastar/json/formatter.hh"
 #include <seastar/http/api_docs.hh>
 #include <seastar/core/prometheus.hh>
 #include <seastar/core/print.hh>
@@ -156,9 +157,8 @@ future<> configure_server_routes(http_server_control& server) {
                 uint64_t key_hash = std::hash<std::string>{}(key);
                 unsigned shard_id = key_hash % seastar::smp::count;
 
-                bool resp = db.invoke_on(shard_id, 
-                [key=std::move(key), body=std::move(body)](auto& instance) -> future<bool>{
-                    co_return co_await instance.put(key, body);
+                bool resp = db.invoke_on(shard_id, [key=std::move(key), body=std::move(body)](auto& instance) -> future<bool> {
+                    return instance.put(key, body);
                 }).get();
                 return std::string("OK");
             });
@@ -169,11 +169,11 @@ future<> configure_server_routes(http_server_control& server) {
                 uint64_t key_hash = std::hash<std::string>{}(key);
                 unsigned shard_id = key_hash % seastar::smp::count;
 
-                std::optional<std::string> resp = db.invoke_on(shard_id, [key](auto& instance) -> future<std::optional<std::string>>{
-                    co_return co_await instance.get(key);
+                std::optional<std::string> resp = db.invoke_on(shard_id, [key](auto& instance) -> future<std::optional<std::string>> {
+                    return instance.get(key);
                 }).get();
                 //TODO: fix that in case not found. Probably possible to change the reply to something that is not directly a string.
-                return resp.value_or("404 not found");
+                return std::string(resp.value_or("404 not found"));
             });
 
             r.add(operation_type::GET, url("/"), hello_handler);
