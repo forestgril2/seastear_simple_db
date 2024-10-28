@@ -90,8 +90,8 @@ extern const std::string server_hello_message;
 
 const std::string k_ssdb_file_name = "seastear_simple_db_server";
 const std::string k_ssdbct_file_name = "seastear_simple_db_client_tester";
-const unsigned k_secs_required_to_start = 2;
-const unsigned k_secs_required_to_terminate = 2;
+const unsigned k_secs_required_to_start = 1;
+const unsigned k_secs_required_to_terminate = 1;
 
 // Function to check if a file exists and is executable
 bool is_executable(const std::string& file) 
@@ -206,7 +206,9 @@ namespace bpo = boost::program_options;
 
 struct DbRespTest
 {
-    DbRespTest()
+    // An indendpendent suite launches and kills the db binary with each test case.
+    // A dependedt one is depentend on an externally launched db.
+    DbRespTest(bool independent = true) : is_independent(independent)
     {
         std::cout << " ################################" << std::endl;
         std::cout << " ### Starting a DB test suite ###" << std::endl;
@@ -275,6 +277,7 @@ struct DbRespTest
     {
         auto response =  co_await request(method, path, body);
         co_return co_await seastar::make_ready_future<bool>(check(
+            //TODO this will only copy the args anyway.
             response, std::move(method), std::move(path), std::move(body), std::move(res_expect)
         )); 
     }
@@ -287,7 +290,9 @@ struct DbRespTest
 
     void init()
     {
-        execute_binary(k_ssdb_file_name);
+        if (is_independent)
+            execute_binary(k_ssdb_file_name);
+
         if (!is_process_alive(k_ssdb_file_name))
         {
             throw("ERROR: Could not start the db in the test suite!");
@@ -296,6 +301,9 @@ struct DbRespTest
 
     void finalize()
     {
+        if (!is_independent)
+            return;
+
         const auto pid = extract_pid(get_process_info(k_ssdb_file_name));
         const auto killed = kill_binary(pid);
         if (!kill_binary(pid))
@@ -339,7 +347,61 @@ private:
     }
 
     std::vector<std::string> failed_cases;
+    bool is_independent = false;
 };
+
+future<bool> run_independent_suites()
+{
+    bool test_result = RUN_ALL_TESTS();
+
+    std::cout << " ###################################" << std::endl;
+    std::cout << " ### Starting all DB test suites ###" << std::endl;
+    std::cout << " ### Available cores: " << std::thread::hardware_concurrency() << std::endl;
+    std::cout << " ###################################" << std::endl;
+
+    if(!test_result)
+    {//Respond hello to GET on //
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_GET("", server_hello_message);
+    }
+    {//Respond 404 to GET on //inexsting
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_GET("inexisting", "404 not found");
+    }
+    if(!test_result)
+    {//Respond OK to key/val body PUT on /
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_req("PUT", "//k", "v", "OK");
+    }
+    if(!test_result)
+    {//Respond OK to key/val body PUT on /, Respond with val, when GET key
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_PUT_GET("key0", "val0");
+    }
+    if(!test_result)
+    {//Respond OK to a different key/val body PUT on /, Respond with val, when GET key
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+    }
+    if(!test_result)
+    {// Can change the value for a key.
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+        test_result = co_await db_suite.test_PUT_GET("key1", "val2");
+    }
+    {// Can put same values under different keys.
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+        test_result = co_await db_suite.test_PUT_GET("key2", "val1");
+    }
+    {// Can DELETE a key
+        DbRespTest db_suite{};
+        test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+        test_result = co_await db_suite.test_DELETE("key1", "OK");
+        test_result = co_await db_suite.test_GET("key1", "404 not found");
+    }
+    co_return co_await seastar::make_ready_future<int>(test_result);
+}
 
 int main(int argc, char** argv) 
 {
@@ -348,58 +410,51 @@ int main(int argc, char** argv)
     seastar::app_template app;
 
     return app.run(argc, argv, [&argc, &argv] () -> seastar::future<int> {
-        set_cpu_affinity();
-        bool test_result = RUN_ALL_TESTS();
+        // TODO: Resolve issues when killing it and launching it from this process multiple times.
+        //set_cpu_affinity();
+        //bool test_result = co_await run_independent_suites();
 
-        co_return co_await seastar::make_ready_future<int>(test_result);
-
-        std::cout << " ###################################" << std::endl;
-        std::cout << " ### Starting all DB test suites ###" << std::endl;
-        std::cout << " ### Available cores: " << std::thread::hardware_concurrency() << std::endl;
-        std::cout << " ###################################" << std::endl;
-
-        if(!test_result)
-        {//Respond hello to GET on //
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_GET("", server_hello_message);
-        }
-        {//Respond 404 to GET on //inexsting
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_GET("inexisting", "404 not found");
-        }
-        if(!test_result)
-        {//Respond OK to key/val body PUT on /
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_req("PUT", "//k", "v", "OK");
-        }
-        if(!test_result)
-        {//Respond OK to key/val body PUT on /, Respond with val, when GET key
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_PUT_GET("key0", "val0");
-        }
-        if(!test_result)
-        {//Respond OK to a different key/val body PUT on /, Respond with val, when GET key
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
-        }
-        if(!test_result)
-        {// Can change the value for a key.
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
-            test_result = co_await db_suite.test_PUT_GET("key1", "val2");
-        }
-        {// Can put same values under different keys.
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
-            test_result = co_await db_suite.test_PUT_GET("key2", "val1");
-        }
-        {// Can DELETE a key
-            DbRespTest db_suite{};
-            test_result = co_await db_suite.test_PUT_GET("key1", "val1");
-            test_result = co_await db_suite.test_DELETE("key1", "OK");
-            test_result = co_await db_suite.test_GET("key1", "404 not found");
-        }
-
-        co_return co_await seastar::make_ready_future<int>(test_result);
+        return seastar::do_with(DbRespTest(false), [&] (DbRespTest& db_suite) -> future<int> {
+            co_return co_await seastar::yield().then(seastar::coroutine::lambda([&] () -> future<bool> {
+                co_await seastar::coroutine::maybe_yield();
+                int test_result = false;
+                if(!test_result)
+                {//Respond hello to GET on //
+                    test_result = co_await db_suite.test_GET("", server_hello_message);
+                }
+                if(!test_result)
+                {//Respond 404 to GET on //inexsting
+                    test_result = co_await db_suite.test_GET("inexisting", "404 not found");
+                }
+                if(!test_result)
+                {//Respond OK to key/val body PUT on /
+                    test_result = co_await db_suite.test_req("PUT", "//k", "v", "OK");
+                }
+                if(!test_result)
+                {//Respond OK to key/val body PUT on /, Respond with val, when GET key
+                    test_result = co_await db_suite.test_PUT_GET("key0", "val0");
+                }
+                if(!test_result)
+                {//Respond OK to a different key/val body PUT on /, Respond with val, when GET key
+                    test_result = co_await db_suite.test_PUT_GET("key1", "val1");
+                }
+                if(!test_result)
+                {// Can change the value for a key.
+                    test_result = co_await db_suite.test_PUT_GET("key1", "val2");
+                }
+                if(!test_result)
+                {// Can put same values under different keys.
+                    test_result = co_await db_suite.test_PUT_GET("key3", "val1");
+                    test_result = co_await db_suite.test_PUT_GET("key4", "val1");
+                }
+                if(!test_result)
+                {// Can DELETE a key
+                    test_result = co_await db_suite.test_PUT_GET("key5", "val1");
+                    test_result = co_await db_suite.test_DELETE("key5", "OK");
+                    test_result = co_await db_suite.test_GET("key5", "404 not found");
+                }
+                co_return co_await make_ready_future<int>(test_result);
+            }));
+        });
     });
 }
