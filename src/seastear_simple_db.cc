@@ -157,6 +157,8 @@ future<> configure_server_routes(http_server_control& server) {
                 uint64_t key_hash = std::hash<std::string>{}(key);
                 unsigned shard_id = key_hash % seastar::smp::count;
 
+                std::cout << " <<<<<<<<<<<< Invoking PUT on shard id "<< shard_id << " ...\n";
+
                 bool resp = db.invoke_on(shard_id, [key=std::move(key), body=std::move(body)](auto& instance) -> future<bool> {
                     return instance.put(key, body);
                 }).get();
@@ -168,6 +170,8 @@ future<> configure_server_routes(http_server_control& server) {
                 // This could be dynamic, based on the cache and/or disk size of the shard. 
                 uint64_t key_hash = std::hash<std::string>{}(key);
                 unsigned shard_id = key_hash % seastar::smp::count;
+
+                std::cout << " <<<<<<<<<<<< Invoking GET on shard id "<< shard_id << " ...\n";
 
                 std::optional<std::string> resp = db.invoke_on(shard_id, [key](auto& instance) -> future<std::optional<std::string>> {
                     return instance.get(key);
